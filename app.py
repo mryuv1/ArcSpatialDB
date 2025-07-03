@@ -9,6 +9,7 @@ Session = sessionmaker(bind=engine)
 metadata = MetaData()
 elements_table = Table('elements', metadata, autoload_with=engine)
 areas_table = Table('areas', metadata, autoload_with=engine)
+projects_table = Table('projects', metadata, autoload_with=engine)
 
 HTML = '''
 <!doctype html>
@@ -93,5 +94,19 @@ def index():
                 session.close()
     return render_template_string(HTML, results=results, error=error)
 
+def list_projects():
+    with engine.connect() as conn:
+        projects = conn.execute(projects_table.select()).fetchall()
+        print('All projects:')
+        if projects:
+            for proj in projects:
+                print(f"  uuid={proj.uuid}, project_name={proj.project_name}, user_name={proj.user_name}, date={proj.date}, "
+                      f"Top Right=({proj.datum_top_right_x}, {proj.datum_top_right_y}), "
+                      f"Bottom Left=({proj.datum_bottom_left_x}, {proj.datum_bottom_left_y}), "
+                      f"file_location={proj.file_location}, paper_size={proj.paper_size}, scale={proj.scale}")
+        else:
+            print('  No projects found.')
+
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)
+    list_projects() 

@@ -7,26 +7,34 @@ Session = sessionmaker(bind=engine)
 session = Session()
 metadata = MetaData()
 
+def print_table(table, session_or_conn, label):
+    print(f'\n{label}:')
+    rows = session_or_conn.execute(table.select()).fetchall()
+    if rows:
+        for row in rows:
+            props = ', '.join(f"{col}={getattr(row, col)}" for col in table.columns.keys())
+            print(f"  {props}")
+    else:
+        print(f'  No {label} found.')
+
 # Reflect tables
-elements_table = Table('elements', metadata, autoload_with=engine)
-areas_table = Table('areas', metadata, autoload_with=engine)
+try:
+    elements_table = Table('elements', metadata, autoload_with=engine)
+    print_table(elements_table, session, 'elements')
+except Exception as e:
+    print('Could not reflect or print elements table:', e)
 
-# Print all elements
-elements = session.execute(elements_table.select()).fetchall()
-print('All elements:')
-if elements:
-    for elem in elements:
-        print(f"  id={elem.id}, name={elem.name}, directory={elem.directory}")
-else:
-    print('  No elements found.')
+try:
+    areas_table = Table('areas', metadata, autoload_with=engine)
+    print_table(areas_table, session, 'areas')
+except Exception as e:
+    print('Could not reflect or print areas table:', e)
 
-# Print all areas
-areas = session.execute(areas_table.select()).fetchall()
-print('\nAll areas:')
-if areas:
-    for area in areas:
-        print(f"  id={area.id}, element_id={area.element_id}, Bottom Left=({area.xmin}, {area.ymin}), Top Right=({area.xmax}, {area.ymax})")
-else:
-    print('  No areas found.')
+try:
+    projects_table = Table('projects', metadata, autoload_with=engine)
+    with engine.connect() as conn:
+        print_table(projects_table, conn, 'projects')
+except Exception as e:
+    print('Could not reflect or print projects table:', e)
 
 session.close() 
