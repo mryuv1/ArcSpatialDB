@@ -1,9 +1,18 @@
 from flask import Flask, render_template_string, request, url_for, send_file
 from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_
 import os
-import glob
+import glob2
+from datetime import datetime
 
 app = Flask(__name__)
+
+# Custom filter for datetime formatting
+@app.template_filter('datetime')
+def datetime_filter(timestamp):
+    return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+
+
 DATABASE_URL = 'sqlite:///elements.db'
 engine = create_engine(DATABASE_URL)
 metadata = MetaData()
@@ -279,6 +288,26 @@ HTML = '''
         .center-query-btn input[type="submit"] {
             min-width: 200px;
         }
+        
+        /* Actions column styling */
+        .actions-column {
+            min-width: 120px;
+        }
+        
+        .actions-column a {
+            display: inline-block;
+            margin: 2px 0;
+            padding: 4px 8px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        
+        .actions-column a:hover {
+            background-color: #2980b9;
+        }
     </style>
 </head>
 <body>
@@ -484,7 +513,7 @@ HTML = '''
       {% if results %}
         <div class="table-container">
             <table border="1" cellpadding="5">
-              <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Scale</th><th>Actions</th></tr>
+              <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Scale</th><th class="actions-column">Actions</th></tr>
               {% for proj in results %}
                 <tr>
                   <td>{{ proj.uuid }}</td>
@@ -494,9 +523,13 @@ HTML = '''
                   <td><a href="file:///{{ proj.abs_file_location_url }}" target="_blank">{{ proj.file_location }}</a></td>
                   <td>{{ proj.paper_size }}</td>
                   <td>{{ proj.scale }}</td>
-                  <td>
+                  <td class="actions-column">
                     {% if proj.view_file_path %}
-                      <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                      {% if proj.file_count == 1 %}
+                        <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                      {% else %}
+                        <a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a>
+                      {% endif %}
                     {% else %}
                       No file
                     {% endif %}
@@ -643,6 +676,39 @@ HTML = '''
         <div id="fileModalBody"></div>
       </div>
     </div>
+    
+    <!-- Gallery Modal for All Files -->
+    <div id="galleryModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.9); z-index:10000; align-items:center; justify-content:center;">
+      <div id="galleryModalContent" style="position:relative; background:#fff; padding:20px; border-radius:8px; max-width:95vw; max-height:95vh; overflow:hidden; display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <h3 id="galleryTitle" style="margin:0; color:#333;">Project Files</h3>
+          <button onclick="closeGalleryModal()" style="background:#e74c3c; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer;">Close</button>
+        </div>
+        
+        <div id="galleryContainer" style="flex:1; display:flex; align-items:center; justify-content:center; position:relative;">
+          <!-- Navigation Arrows -->
+          <button id="prevBtn" onclick="previousFile()" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.7); color:white; border:none; padding:15px 10px; border-radius:50%; cursor:pointer; font-size:18px; z-index:10001;">‹</button>
+          <button id="nextBtn" onclick="nextFile()" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.7); color:white; border:none; padding:15px 10px; border-radius:50%; cursor:pointer; font-size:18px; z-index:10001;">›</button>
+          
+          <!-- File Display Area -->
+          <div id="galleryFileDisplay" style="max-width:90%; max-height:80vh; display:flex; align-items:center; justify-content:center;">
+            <!-- Content will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- File Info and Navigation -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px; padding:10px; background:#f8f9fa; border-radius:4px;">
+          <div id="fileInfo" style="flex:1;">
+            <div id="fileName" style="font-weight:bold; margin-bottom:5px;"></div>
+            <div id="fileDate" style="font-size:0.9em; color:#666;"></div>
+          </div>
+          <div id="fileCounter" style="text-align:center; font-weight:bold; color:#333;"></div>
+          <div id="fileType" style="background:#3498db; color:white; padding:4px 8px; border-radius:12px; font-size:0.8em;"></div>
+        </div>
+      </div>
+    </div>
+    
+
     <script>
     function showFileModal(url, type) {
       var modal = document.getElementById('fileModal');
@@ -660,6 +726,207 @@ HTML = '''
       body.innerHTML = '';
       modal.style.display = 'none';
     }
+    
+    // Gallery modal variables
+    var currentFiles = [];
+    var currentFileIndex = 0;
+    
+    function showAllFilesModal(uuid) {
+      try {
+        // Get the clicked element and its data-files attribute
+        var clickedElement = event.target;
+        var filesJson = clickedElement.getAttribute('data-files');
+        
+        currentFiles = JSON.parse(filesJson);
+        currentFileIndex = 0;
+        
+        var modal = document.getElementById('galleryModal');
+        var title = document.getElementById('galleryTitle');
+        
+        title.textContent = 'Project Files (' + currentFiles.length + ' files)';
+        modal.style.display = 'flex';
+        
+        displayCurrentFile();
+      } catch (error) {
+        console.error('Error parsing files data:', error);
+        alert('Error loading files. Please try again.');
+      }
+    }
+    
+    function closeGalleryModal() {
+      var modal = document.getElementById('galleryModal');
+      modal.style.display = 'none';
+      currentFiles = [];
+      currentFileIndex = 0;
+    }
+    
+    function displayCurrentFile() {
+      if (currentFiles.length === 0) return;
+      
+      var file = currentFiles[currentFileIndex];
+      var display = document.getElementById('galleryFileDisplay');
+      var fileName = document.getElementById('fileName');
+      var fileDate = document.getElementById('fileDate');
+      var fileCounter = document.getElementById('fileCounter');
+      var fileType = document.getElementById('fileType');
+      var prevBtn = document.getElementById('prevBtn');
+      var nextBtn = document.getElementById('nextBtn');
+      
+      // Update file info
+      fileName.textContent = file.filename;
+      fileDate.textContent = new Date(file.ctime * 1000).toLocaleString();
+      fileCounter.textContent = (currentFileIndex + 1) + ' / ' + currentFiles.length;
+      fileType.textContent = file.type.toUpperCase();
+      
+      // Update navigation buttons
+      prevBtn.style.display = currentFileIndex > 0 ? 'block' : 'none';
+      nextBtn.style.display = currentFileIndex < currentFiles.length - 1 ? 'block' : 'none';
+      
+      // Generate URL dynamically
+      var fileUrl = '/view_file/' + encodeURIComponent(file.rel_path);
+      
+      // Display file content
+      if (file.type === 'pdf') {
+        display.innerHTML = '<iframe src="' + fileUrl + '" width="800" height="600" style="border:none; max-width:100%; max-height:100%;"></iframe>';
+      } else {
+        display.innerHTML = '<img src="' + fileUrl + '" style="max-width:100%; max-height:100%; object-fit:contain;" alt="' + file.filename + '">';
+      }
+    }
+    
+    function previousFile() {
+      if (currentFileIndex > 0) {
+        currentFileIndex--;
+        displayCurrentFile();
+      }
+    }
+    
+    function nextFile() {
+      if (currentFileIndex < currentFiles.length - 1) {
+        currentFileIndex++;
+        displayCurrentFile();
+      }
+    }
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', function(event) {
+      if (document.getElementById('galleryModal').style.display === 'flex') {
+        if (event.key === 'ArrowLeft') {
+          previousFile();
+        } else if (event.key === 'ArrowRight') {
+          nextFile();
+        } else if (event.key === 'Escape') {
+          closeGalleryModal();
+        }
+      }
+    });
+    
+    // Gallery modal variables
+    var currentFiles = [];
+    var currentFileIndex = 0;
+    
+    function showSingleFileModal(relPath, fileType, filename) {
+      var modal = document.getElementById('fileModal');
+      var body = document.getElementById('fileModalBody');
+      var fileUrl = '/view_file/' + encodeURIComponent(relPath);
+      
+      if (fileType === 'pdf') {
+        body.innerHTML = '<iframe src="' + fileUrl + '" width="800" height="600" style="border:none; max-width:100%; max-height:100%;"></iframe>';
+      } else {
+        body.innerHTML = '<img src="' + fileUrl + '" style="max-width:100%; max-height:100%; object-fit:contain;" alt="' + filename + '">';
+      }
+      modal.style.display = 'flex';
+    }
+    
+
+    
+    function showAllFilesModal(uuid) {
+      try {
+        // Get the clicked element and its data-files attribute
+        var clickedElement = event.target;
+        var filesJson = clickedElement.getAttribute('data-files');
+        
+        currentFiles = JSON.parse(filesJson);
+        currentFileIndex = 0;
+        
+        var modal = document.getElementById('galleryModal');
+        var title = document.getElementById('galleryTitle');
+        
+        title.textContent = 'Project Files (' + currentFiles.length + ' files)';
+        modal.style.display = 'flex';
+        
+        displayCurrentFile();
+      } catch (error) {
+        console.error('Error parsing files data:', error);
+        alert('Error loading files. Please try again.');
+      }
+    }
+    
+    function closeGalleryModal() {
+      var modal = document.getElementById('galleryModal');
+      modal.style.display = 'none';
+      currentFiles = [];
+      currentFileIndex = 0;
+    }
+    
+    function displayCurrentFile() {
+      if (currentFiles.length === 0) return;
+      
+      var file = currentFiles[currentFileIndex];
+      var display = document.getElementById('galleryFileDisplay');
+      var fileName = document.getElementById('fileName');
+      var fileDate = document.getElementById('fileDate');
+      var fileCounter = document.getElementById('fileCounter');
+      var fileType = document.getElementById('fileType');
+      var prevBtn = document.getElementById('prevBtn');
+      var nextBtn = document.getElementById('nextBtn');
+      
+      // Update file info
+      fileName.textContent = file.filename;
+      fileDate.textContent = new Date(file.ctime * 1000).toLocaleString();
+      fileCounter.textContent = (currentFileIndex + 1) + ' / ' + currentFiles.length;
+      fileType.textContent = file.type.toUpperCase();
+      
+      // Update navigation buttons
+      prevBtn.style.display = currentFileIndex > 0 ? 'block' : 'none';
+      nextBtn.style.display = currentFileIndex < currentFiles.length - 1 ? 'block' : 'none';
+      
+      // Generate URL dynamically
+      var fileUrl = '/view_file/' + encodeURIComponent(file.rel_path);
+      
+      // Display file content
+      if (file.type === 'pdf') {
+        display.innerHTML = '<iframe src="' + fileUrl + '" width="800" height="600" style="border:none; max-width:100%; max-height:100%;"></iframe>';
+      } else {
+        display.innerHTML = '<img src="' + fileUrl + '" style="max-width:100%; max-height:100%; object-fit:contain;" alt="' + file.filename + '">';
+      }
+    }
+    
+    function previousFile() {
+      if (currentFileIndex > 0) {
+        currentFileIndex--;
+        displayCurrentFile();
+      }
+    }
+    
+    function nextFile() {
+      if (currentFileIndex < currentFiles.length - 1) {
+        currentFileIndex++;
+        displayCurrentFile();
+      }
+    }
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', function(event) {
+      if (document.getElementById('galleryModal').style.display === 'flex') {
+        if (event.key === 'ArrowLeft') {
+          previousFile();
+        } else if (event.key === 'ArrowRight') {
+          nextFile();
+        } else if (event.key === 'Escape') {
+          closeGalleryModal();
+        }
+      }
+    });
     </script>
 </body>
 </html>
@@ -796,16 +1063,35 @@ def index():
                 abs_path = os.path.abspath(rel_path)
                 proj['abs_file_location'] = abs_path
                 proj['abs_file_location_url'] = abs_path.replace("\\", "/")
-                # Find the most recent file among PDF, JPEG, PNG
-                file_types = [('pdf', 'pdf'), ('jpeg', 'img'), ('png', 'img')]
+                
+                # Find all files (PDF, JPEG, PNG) for this project
+                file_types = [('pdf', 'pdf'), ('jpeg', 'img'), ('jpg', 'img'), ('png', 'img')]
+                all_files = []
                 most_recent = None
+                
                 for ext, ftype in file_types:
                     pattern = os.path.join(abs_path, f"*.{ext}")
-                    files = glob.glob(pattern)
+                    files = glob2.glob(pattern)
                     for f in files:
                         ctime = os.path.getctime(f)
+                        file_info = {
+                            'path': f, 
+                            'type': ftype, 
+                            'ctime': ctime,
+                            'filename': os.path.basename(f),
+                            'rel_path': os.path.relpath(f, os.path.abspath('.'))
+                        }
+                        all_files.append(file_info)
+                        
+                        # Track the most recent file for the single "View" option
                         if (most_recent is None) or (ctime > most_recent['ctime']):
-                            most_recent = {'path': f, 'type': ftype, 'ctime': ctime}
+                            most_recent = file_info
+                
+                # Sort files by creation time (newest first)
+                all_files.sort(key=lambda x: x['ctime'], reverse=True)
+                proj['all_files'] = all_files
+                proj['file_count'] = len(all_files)
+                
                 if most_recent:
                     proj['view_file_path'] = most_recent['path']
                     proj['view_file_type'] = most_recent['type']
@@ -967,6 +1253,8 @@ def view_file(rel_path):
     if not abs_path.startswith(os.path.abspath('.')):
         return "Access denied", 403
     return send_file(abs_path)
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
