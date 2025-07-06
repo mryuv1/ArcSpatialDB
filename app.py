@@ -1239,7 +1239,7 @@ def index():
             id_val = int(areas_filters['id_filter'])
             areas_query_filters.append(areas_table.c.id == id_val)
         except ValueError:
-            areas_query_filters.append(areas_table.c.id.cast(text("TEXT")).ilike(f"%{areas_filters['id_filter']}%"))
+            areas_query_filters.append(areas_table.c.id == -1)
     if areas_filters['project_id_filter']:
         areas_query_filters.append(areas_table.c.project_id.ilike(f"%{areas_filters['project_id_filter']}%"))
     if areas_filters['xmin_filter']:
@@ -1247,25 +1247,25 @@ def index():
             xmin_val = float(areas_filters['xmin_filter'])
             areas_query_filters.append(areas_table.c.xmin == xmin_val)
         except ValueError:
-            areas_query_filters.append(areas_table.c.xmin.cast(text("TEXT")).ilike(f"%{areas_filters['xmin_filter']}%"))
+            areas_query_filters.append(areas_table.c.xmin == -1)
     if areas_filters['ymin_filter']:
         try:
             ymin_val = float(areas_filters['ymin_filter'])
             areas_query_filters.append(areas_table.c.ymin == ymin_val)
         except ValueError:
-            areas_query_filters.append(areas_table.c.ymin.cast(text("TEXT")).ilike(f"%{areas_filters['ymin_filter']}%"))
+            areas_query_filters.append(areas_table.c.ymin == -1)
     if areas_filters['xmax_filter']:
         try:
             xmax_val = float(areas_filters['xmax_filter'])
             areas_query_filters.append(areas_table.c.xmax == xmax_val)
         except ValueError:
-            areas_query_filters.append(areas_table.c.xmax.cast(text("TEXT")).ilike(f"%{areas_filters['xmax_filter']}%"))
+            areas_query_filters.append(areas_table.c.xmax == -1)
     if areas_filters['ymax_filter']:
         try:
             ymax_val = float(areas_filters['ymax_filter'])
             areas_query_filters.append(areas_table.c.ymax == ymax_val)
         except ValueError:
-            areas_query_filters.append(areas_table.c.ymax.cast(text("TEXT")).ilike(f"%{areas_filters['ymax_filter']}%"))
+            areas_query_filters.append(areas_table.c.ymax == -1)
 
 
     with engine.connect() as conn:
