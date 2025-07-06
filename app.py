@@ -102,7 +102,7 @@ HTML = '''
         }
         
         /* Force specific fields to be on their own line */
-        form label:nth-child(3) {  /* Project UUID */
+        .full-width-field {
             grid-column: 1 / -1;
         }
 
@@ -328,6 +328,44 @@ HTML = '''
                 grid-column: span 1;
                 flex-direction: column;
             }
+            #relative_size_fields {
+                grid-column: span 1;
+                flex-direction: column;
+            }
+        }
+        
+        /* Relative size styling */
+        #relative_size_fields {
+            grid-column: span 2;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        #relative_size_fields input[type="checkbox"] {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+        
+        #relative_size_fields input[type="number"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+            width: 120px;
+            box-sizing: border-box;
+        }
+        
+        #relative_size_fields label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0;
+            font-weight: normal;
+        }
+        
+        #relative_size_fields .percentage-input {
+            display: none;
         }
         .center-query-btn {
             grid-column: 1 / -1;
@@ -423,7 +461,11 @@ HTML = '''
     <form method="post" id="searchForm">
       <label>Bottom Left (XMin/YMin): <input name="bottom_left" type="text" placeholder="e.g., 10.5/20.1" value="{{ request.form.bottom_left if request.form.bottom_left else '' }}"></label>
       <label>Top Right (XMax/YMax): <input name="top_right" type="text" placeholder="e.g., 30.0/40.8" value="{{ request.form.top_right if request.form.top_right else '' }}"></label>
-      <label>Project UUID: <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef" value="{{ request.form.uuid if request.form.uuid else '' }}"></label>
+      <div id="relative_size_fields">
+        <label><input name="relative_size" type="checkbox" value="1" {% if request.form.relative_size %}checked{% endif %} onchange="toggleRelativeSize()"> Relative Size</label>
+        <label class="percentage-input">Percentage (±): <input name="size_percentage" type="number" min="0" max="1000" step="0.1" placeholder="e.g., 10" value="{{ request.form.size_percentage if request.form.size_percentage else '10' }}">%</label>
+      </div>
+      <label class="full-width-field">Project UUID: <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef" value="{{ request.form.uuid if request.form.uuid else '' }}"></label>
       <div id="user_name_fields" style="grid-column: 1 / -1;">
         <label>User Name:
           <select name="user_name">
@@ -508,12 +550,26 @@ HTML = '''
       }
     }
 
+    function toggleRelativeSize() {
+      var relativeSizeCheckbox = document.querySelector('input[name="relative_size"]');
+      var percentageInput = document.querySelector('.percentage-input');
+      
+      if (relativeSizeCheckbox.checked) {
+        percentageInput.style.display = 'block';
+      } else {
+        percentageInput.style.display = 'none';
+      }
+    }
+
     function resetForm() {
       // Reset all form inputs
       document.getElementById('searchForm').reset();
       
       // Hide custom size fields
       document.getElementById('custom_size_fields').style.display = 'none';
+      
+      // Hide relative size percentage input
+      document.querySelector('.percentage-input').style.display = 'none';
       
       // Clear any additional user name dropdowns (keep only the first one)
       var userNamesDiv = document.getElementById('user_name_fields');
@@ -529,6 +585,9 @@ HTML = '''
           firstSelect.value = '';
         }
       }
+      
+      // Clear URL parameters and reload the page to reset everything
+      window.location.href = window.location.pathname;
     }
 
     function copyPath(path) {
@@ -664,6 +723,9 @@ HTML = '''
 
       // Initialize custom size fields state
       toggleCustomSize();
+      
+      // Initialize relative size fields state
+      toggleRelativeSize();
     }
     </script>
     {% if error %}
@@ -1027,6 +1089,12 @@ def parse_point(s):
     except Exception:
         return None
 
+def calculate_area_size(xmin, ymin, xmax, ymax):
+    """Calculate the area size in square meters using UTM coordinates"""
+    width = abs(xmax - xmin)
+    height = abs(ymax - ymin)
+    return width * height
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     results = None
@@ -1043,6 +1111,9 @@ def index():
         # Parse spatial box
         bottom_left = request.form.get('bottom_left', '').strip()
         top_right = request.form.get('top_right', '').strip()
+        relative_size_enabled = request.form.get('relative_size') == '1'
+        size_percentage = request.form.get('size_percentage', '10').strip()
+        
         if bottom_left and top_right:
             bl = parse_point(bottom_left)
             tr = parse_point(top_right)
@@ -1055,10 +1126,38 @@ def index():
                     error = 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'
                 else:
                     join_areas = True
-                    filters.append(areas_table.c.xmin < xmax)
-                    filters.append(areas_table.c.xmax > xmin)
-                    filters.append(areas_table.c.ymin < ymax)
-                    filters.append(areas_table.c.ymax > ymin)
+                    
+                    if relative_size_enabled:
+                        try:
+                            percentage = float(size_percentage)
+                            if percentage < 0 or percentage > 1000:
+                                error = 'Percentage must be between 0 and 1000.'
+                            else:
+                                # Calculate the reference area size
+                                reference_area_size = calculate_area_size(xmin, ymin, xmax, ymax)
+                                
+                                # Calculate the size range (±percentage)
+                                min_size = reference_area_size * (1 - percentage / 100)
+                                max_size = reference_area_size * (1 + percentage / 100)
+                                
+                                # Add spatial overlap filters
+                                filters.append(areas_table.c.xmin < xmax)
+                                filters.append(areas_table.c.xmax > xmin)
+                                filters.append(areas_table.c.ymin < ymax)
+                                filters.append(areas_table.c.ymax > ymin)
+                                
+                                # Add size comparison filter using calculated area
+                                area_size_expr = (areas_table.c.xmax - areas_table.c.xmin) * (areas_table.c.ymax - areas_table.c.ymin)
+                                filters.append(area_size_expr >= min_size)
+                                filters.append(area_size_expr <= max_size)
+                        except ValueError:
+                            error = 'Percentage must be a valid number.'
+                    else:
+                        # Standard spatial overlap without size filtering
+                        filters.append(areas_table.c.xmin < xmax)
+                        filters.append(areas_table.c.xmax > xmin)
+                        filters.append(areas_table.c.ymin < ymax)
+                        filters.append(areas_table.c.ymax > ymin)
         # Parse other filters
         uuid = request.form.get('uuid', '').strip()
         if uuid:
