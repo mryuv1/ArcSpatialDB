@@ -188,8 +188,66 @@ HTML = '''
             border: 1px solid #ccc;
             border-radius: 3px;
         }
+        
+        .filter-form input[type="date"] {
+            padding: 3px;
+            margin: 1px 0;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 0.8em;
+        }
         .table-container {
             overflow-x: auto; /* Enable horizontal scrolling for tables */
+        }
+
+        /* Date range styling */
+        #date_range_fields {
+            grid-column: span 2;
+        }
+        
+        #date_range_fields input[type="text"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        #date_range_fields span {
+            font-weight: bold;
+            color: #666;
+        }
+
+        /* Custom size fields styling */
+        #custom_size_fields {
+            grid-column: span 2;
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        #custom_size_fields label {
+            flex: 1 1 auto;
+            min-width: 200px;
+        }
+
+        #custom_size_fields input[type="number"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .full-width-row {
+            grid-column: 1 / -1;
+            width: 100%;
+            display: flex;
+            align-items: flex-end;
+            margin-top: 10px;
         }
 
         /* Responsive adjustments */
@@ -199,7 +257,25 @@ HTML = '''
             }
             #user_name_fields {
                 grid-column: span 1;
+                flex-direction: column;
             }
+            #date_range_fields {
+                grid-column: span 1;
+            }
+            #custom_size_fields {
+                grid-column: span 1;
+                flex-direction: column;
+            }
+        }
+        .center-query-btn {
+            grid-column: 1 / -1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .center-query-btn input[type="submit"] {
+            min-width: 200px;
         }
     </style>
 </head>
@@ -220,9 +296,45 @@ HTML = '''
         </label>
       </div>
       <button type="button" onclick="addUserNameDropdown()">Add another user name</button>
-      <label>Paper Size: <input name="paper_size" type="text" placeholder="e.g., A4" value="{{ request.form.paper_size if request.form.paper_size else '' }}"></label>
+      <div class="full-width-row" id="paper_size_row">
+        <label style="margin-bottom:0;">Paper Size:
+          <select name="paper_size" id="paper_size_select" onchange="toggleCustomSize()">
+            <option value="">Select Paper Size</option>
+            <option value="A0 (Portrait)" {% if request.form.paper_size == 'A0 (Portrait)' %}selected{% endif %}>A0 (Portrait)</option>
+            <option value="A0 (Landscape)" {% if request.form.paper_size == 'A0 (Landscape)' %}selected{% endif %}>A0 (Landscape)</option>
+            <option value="A1 (Portrait)" {% if request.form.paper_size == 'A1 (Portrait)' %}selected{% endif %}>A1 (Portrait)</option>
+            <option value="A1 (Landscape)" {% if request.form.paper_size == 'A1 (Landscape)' %}selected{% endif %}>A1 (Landscape)</option>
+            <option value="A2 (Portrait)" {% if request.form.paper_size == 'A2 (Portrait)' %}selected{% endif %}>A2 (Portrait)</option>
+            <option value="A2 (Landscape)" {% if request.form.paper_size == 'A2 (Landscape)' %}selected{% endif %}>A2 (Landscape)</option>
+            <option value="A3 (Portrait)" {% if request.form.paper_size == 'A3 (Portrait)' %}selected{% endif %}>A3 (Portrait)</option>
+            <option value="A3 (Landscape)" {% if request.form.paper_size == 'A3 (Landscape)' %}selected{% endif %}>A3 (Landscape)</option>
+            <option value="A4 (Portrait)" {% if request.form.paper_size == 'A4 (Portrait)' %}selected{% endif %}>A4 (Portrait)</option>
+            <option value="A4 (Landscape)" {% if request.form.paper_size == 'A4 (Landscape)' %}selected{% endif %}>A4 (Landscape)</option>
+            <option value="A5 (Portrait)" {% if request.form.paper_size == 'A5 (Portrait)' %}selected{% endif %}>A5 (Portrait)</option>
+            <option value="A5 (Landscape)" {% if request.form.paper_size == 'A5 (Landscape)' %}selected{% endif %}>A5 (Landscape)</option>
+            <option value="B0 (Portrait)" {% if request.form.paper_size == 'B0 (Portrait)' %}selected{% endif %}>B0 (Portrait)</option>
+            <option value="B0 (Landscape)" {% if request.form.paper_size == 'B0 (Landscape)' %}selected{% endif %}>B0 (Landscape)</option>
+            <option value="custom" {% if request.form.paper_size == 'custom' %}selected{% endif %}>Custom Size</option>
+          </select>
+        </label>
+        <div id="custom_size_fields" style="display: none; margin-left: 15px; flex: 0 0 auto;">
+          <label style="margin-bottom:0;">Custom Height (cm): <input name="custom_height" type="number" step="0.1" placeholder="e.g., 29.7" value="{{ request.form.custom_height if request.form.custom_height else '' }}"></label>
+          <label style="margin-bottom:0; margin-left: 10px;">Custom Width (cm): <input name="custom_width" type="number" step="0.1" placeholder="e.g., 21.0" value="{{ request.form.custom_width if request.form.custom_width else '' }}"></label>
+        </div>
+      </div>
       <label>Scale: <input name="scale" type="text" placeholder="e.g., 1000" value="{{ request.form.scale if request.form.scale else '' }}"></label>
-      <input type="submit" value="Query">
+      <div id="date_range_fields">
+        <label>Date Range:
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <input name="date_from" type="text" placeholder="DD/MM/YYYY (e.g., 09/07/2025)" value="{{ request.form.date_from if request.form.date_from else '' }}" style="flex: 1;" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}">
+            <span>to</span>
+            <input name="date_to" type="text" placeholder="DD/MM/YYYY (e.g., 25/12/2025)" value="{{ request.form.date_to if request.form.date_to else '' }}" style="flex: 1;" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}">
+          </div>
+        </label>
+      </div>
+      <div class="center-query-btn">
+        <input type="submit" value="Query">
+      </div>
     </form>
     <script>
     function addUserNameDropdown() {
@@ -243,6 +355,17 @@ HTML = '''
       }
       label.appendChild(select);
       div.appendChild(label);
+    }
+
+    function toggleCustomSize() {
+      var paperSizeSelect = document.getElementById('paper_size_select');
+      var customFields = document.getElementById('custom_size_fields');
+      
+      if (paperSizeSelect.value === 'custom') {
+        customFields.style.display = 'block';
+      } else {
+        customFields.style.display = 'none';
+      }
     }
 
     // Function to get a URL parameter
@@ -346,6 +469,9 @@ HTML = '''
       if (scroll_pos) {
           window.scrollTo(0, parseInt(scroll_pos));
       }
+
+      // Initialize custom size fields state
+      toggleCustomSize();
     }
     </script>
     {% if error %}
@@ -386,7 +512,11 @@ HTML = '''
                   <th>UUID <br> <input type="text" name="projects_uuid_filter" class="filter-input" value="{{ projects_filters.uuid_filter }}" placeholder="Filter UUID"></th>
                   <th>Project Name <br> <input type="text" name="projects_project_name_filter" class="filter-input" value="{{ projects_filters.project_name_filter }}" placeholder="Filter Name"></th>
                   <th>User Name <br> <input type="text" name="projects_user_name_filter" class="filter-input" value="{{ projects_filters.user_name_filter }}" placeholder="Filter User"></th>
-                  <th>Date <br> <input type="text" name="projects_date_filter" class="filter-input" value="{{ projects_filters.date_filter }}" placeholder="Filter Date"></th>
+                  <th>Date <br> 
+                    <input type="text" name="projects_date_filter" class="filter-input" value="{{ projects_filters.date_filter }}" placeholder="Filter Date" style="width: 100%; margin-bottom: 2px;">
+                    <input type="text" name="projects_date_from_filter" class="filter-input" value="{{ projects_filters.date_from_filter }}" placeholder="DD/MM/YYYY" style="width: 48%; font-size: 0.8em;" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}">
+                    <input type="text" name="projects_date_to_filter" class="filter-input" value="{{ projects_filters.date_to_filter }}" placeholder="DD/MM/YYYY" style="width: 48%; font-size: 0.8em; margin-left: 2%;" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}">
+                  </th>
                   <th>File Location <br> <input type="text" name="projects_file_location_filter" class="filter-input" value="{{ projects_filters.file_location_filter }}" placeholder="Filter Location"></th>
                   <th>Paper Size <br> <input type="text" name="projects_paper_size_filter" class="filter-input" value="{{ projects_filters.paper_size_filter }}" placeholder="Filter Size"></th>
                   <th>Scale <br> <input type="text" name="projects_scale_filter" class="filter-input" value="{{ projects_filters.scale_filter }}" placeholder="Filter Scale"></th>
@@ -550,14 +680,28 @@ def index():
         # Parse other filters
         uuid = request.form.get('uuid', '').strip()
         if uuid:
-            filters.append(projects_table.c.uuid == uuid)
+            filters.append(projects_table.c.uuid.ilike(f"{uuid}%"))
         user_name_list = request.form.getlist('user_name')
         selected_user_names = [n for n in user_name_list if n]
         if selected_user_names:
-            filters.append(projects_table.c.user_name.in_(selected_user_names))
+            filters.append(projects_table.c.user_name.in_([n + '%' for n in selected_user_names]))
         paper_size = request.form.get('paper_size', '').strip()
+        custom_height = request.form.get('custom_height', '').strip()
+        custom_width = request.form.get('custom_width', '').strip()
+        
         if paper_size:
-            filters.append(projects_table.c.paper_size == paper_size)
+            if paper_size == 'custom' and custom_height and custom_width:
+                try:
+                    height_cm = float(custom_height)
+                    width_cm = float(custom_width)
+                    custom_size_format = f"Custom Size: Height: {height_cm} cm, Width: {width_cm} cm"
+                    filters.append(projects_table.c.paper_size.ilike(f"{custom_size_format}%"))
+                except ValueError:
+                    error = 'Custom height and width must be valid numbers.'
+            elif paper_size != 'custom':
+                filters.append(projects_table.c.paper_size.ilike(f"{paper_size}%"))
+            elif paper_size == 'custom' and (not custom_height or not custom_width):
+                error = 'Please enter both height and width for custom size.'
         scale = request.form.get('scale', '').strip()
         if scale:
             try:
@@ -565,6 +709,40 @@ def index():
                 filters.append(projects_table.c.scale == scale_val)
             except ValueError:
                 error = 'Scale must be a number.'
+        
+        # Parse date range
+        date_from = request.form.get('date_from', '').strip()
+        date_to = request.form.get('date_to', '').strip()
+        
+        if date_from or date_to:
+            # Convert DD/MM/YYYY format to database format (DD-MM-YY) for comparison
+            def convert_date_to_db_format(date_str):
+                try:
+                    if date_str and '/' in date_str:  # DD/MM/YYYY format
+                        day, month, year = date_str.split('/')
+                        # Convert to DD-MM-YY format for database comparison
+                        return f"{day.zfill(2)}-{month.zfill(2)}-{year[2:]}"
+                    elif date_str and '-' in date_str:  # DD-MM-YY format (already correct)
+                        return date_str
+                    return None
+                except:
+                    return None
+            
+            if date_from:
+                converted_from = convert_date_to_db_format(date_from)
+                if converted_from:
+                    # For date comparison, we need to ensure proper string comparison
+                    filters.append(projects_table.c.date >= converted_from)
+                else:
+                    error = 'Invalid date format for "From Date". Use DD/MM/YYYY format.'
+            
+            if date_to:
+                converted_to = convert_date_to_db_format(date_to)
+                if converted_to:
+                    # For date comparison, we need to ensure proper string comparison
+                    filters.append(projects_table.c.date <= converted_to)
+                else:
+                    error = 'Invalid date format for "To Date". Use DD/MM/YYYY format.'
 
         if error is None:
             with engine.connect() as conn:
@@ -589,6 +767,8 @@ def index():
         'project_name_filter': request.args.get('projects_project_name_filter', '', type=str),
         'user_name_filter': request.args.get('projects_user_name_filter', '', type=str),
         'date_filter': request.args.get('projects_date_filter', '', type=str),
+        'date_from_filter': request.args.get('projects_date_from_filter', '', type=str),
+        'date_to_filter': request.args.get('projects_date_to_filter', '', type=str),
         'file_location_filter': request.args.get('projects_file_location_filter', '', type=str),
         'paper_size_filter': request.args.get('projects_paper_size_filter', '', type=str),
         'scale_filter': request.args.get('projects_scale_filter', '', type=str)
@@ -596,17 +776,17 @@ def index():
 
     projects_query_filters = []
     if projects_filters['uuid_filter']:
-        projects_query_filters.append(projects_table.c.uuid.ilike(f"%{projects_filters['uuid_filter']}%"))
+        projects_query_filters.append(projects_table.c.uuid.ilike(f"{projects_filters['uuid_filter']}%"))
     if projects_filters['project_name_filter']:
-        projects_query_filters.append(projects_table.c.project_name.ilike(f"%{projects_filters['project_name_filter']}%"))
+        projects_query_filters.append(projects_table.c.project_name.ilike(f"{projects_filters['project_name_filter']}%"))
     if projects_filters['user_name_filter']:
-        projects_query_filters.append(projects_table.c.user_name.ilike(f"%{projects_filters['user_name_filter']}%"))
+        projects_query_filters.append(projects_table.c.user_name.ilike(f"{projects_filters['user_name_filter']}%"))
     if projects_filters['date_filter']:
-        projects_query_filters.append(projects_table.c.date.ilike(f"%{projects_filters['date_filter']}%"))
+        projects_query_filters.append(projects_table.c.date.ilike(f"{projects_filters['date_filter']}%"))
     if projects_filters['file_location_filter']:
-        projects_query_filters.append(projects_table.c.file_location.ilike(f"%{projects_filters['file_location_filter']}%"))
+        projects_query_filters.append(projects_table.c.file_location.ilike(f"{projects_filters['file_location_filter']}%"))
     if projects_filters['paper_size_filter']:
-        projects_query_filters.append(projects_table.c.paper_size.ilike(f"%{projects_filters['paper_size_filter']}%"))
+        projects_query_filters.append(projects_table.c.paper_size.ilike(f"{projects_filters['paper_size_filter']}%"))
     if projects_filters['scale_filter']:
         # Attempt to cast to float for numeric comparison or partial string match
         try:
