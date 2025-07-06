@@ -36,6 +36,51 @@ HTML = '''
             color: #333;
             line-height: 1.6;
         }
+        
+        .header-footer {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header-footer:last-of-type {
+            margin-top: 30px;
+            margin-bottom: 0;
+        }
+        
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .logo {
+            width: 40px;
+            height: 40px;
+            background: #e74c3c;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            color: white;
+        }
+        
+        .company-info {
+            font-size: 14px;
+        }
+        
+        .copyright {
+            font-size: 12px;
+            opacity: 0.9;
+        }
 
         h2, h3 {
             color: #2c3e50;
@@ -53,6 +98,11 @@ HTML = '''
             display: grid;
             gap: 15px;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+        
+        /* Force specific fields to be on their own line */
+        form label:nth-child(3) {  /* Project UUID */
+            grid-column: 1 / -1;
         }
 
         form label {
@@ -328,12 +378,29 @@ HTML = '''
     </style>
 </head>
 <body>
+    <!-- Header with Logo and Copyright -->
+    <div class="header-footer">
+        <div class="logo-section">
+            <div class="logo">
+                <img src="{{ url_for('static', filename='rocket.jpg') }}" alt="Rocket Logo" style="width: 36px; height: 36px; object-fit: contain; border-radius: 50%; background: white;">
+            </div>
+            <div class="company-info">
+                <strong>ARCgis PRO DataBase</strong><br>
+                <span style="font-size: 11px;">פרוייקט שימור הידע של (נוסיף שיתאפשר)</span><br>
+                <span class="copyright">@Rocket Team Production</span>
+            </div>
+        </div>
+        <div class="copyright">
+            Version 1.0 | Spatial Database Management System
+        </div>
+    </div>
+    
     <h2>Project Search</h2>
     <form method="post" id="searchForm">
       <label>Bottom Left (XMin/YMin): <input name="bottom_left" type="text" placeholder="e.g., 10.5/20.1" value="{{ request.form.bottom_left if request.form.bottom_left else '' }}"></label>
       <label>Top Right (XMax/YMax): <input name="top_right" type="text" placeholder="e.g., 30.0/40.8" value="{{ request.form.top_right if request.form.top_right else '' }}"></label>
       <label>Project UUID: <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef" value="{{ request.form.uuid if request.form.uuid else '' }}"></label>
-      <div id="user_name_fields">
+      <div id="user_name_fields" style="grid-column: 1 / -1;">
         <label>User Name:
           <select name="user_name">
             <option value=""></option>
@@ -723,7 +790,17 @@ HTML = '''
                   <td>{{ area.xmax }}</td>
                   <td>{{ area.ymax }}</td>
                   <td class="actions-column">
-                    <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                    {% if area.project_view_file_path %}
+                      {% if area.project_file_count == 1 %}
+                        <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=area.project_view_file_path) }}','{{ area.project_view_file_type }}'); return false">View Project</a>
+                        <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                      {% else %}
+                        <a href="#" onclick="showAllFilesModal('{{ area.project_id }}'); return false" data-files='{{ area.project_all_files|tojson|safe }}'>View Project ({{ area.project_file_count }})</a>
+                        <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                      {% endif %}
+                    {% else %}
+                      <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
@@ -909,115 +986,22 @@ HTML = '''
         }
       }
     });
-    
-    // Gallery modal variables
-    var currentFiles = [];
-    var currentFileIndex = 0;
-    
-    function showSingleFileModal(relPath, fileType, filename) {
-      var modal = document.getElementById('fileModal');
-      var body = document.getElementById('fileModalBody');
-      var fileUrl = '/view_file/' + encodeURIComponent(relPath);
-      
-      if (fileType === 'pdf') {
-        body.innerHTML = '<iframe src="' + fileUrl + '" width="800" height="600" style="border:none; max-width:100%; max-height:100%;"></iframe>';
-      } else {
-        body.innerHTML = '<img src="' + fileUrl + '" style="max-width:100%; max-height:100%; object-fit:contain;" alt="' + filename + '">';
-      }
-      modal.style.display = 'flex';
-    }
-    
-
-    
-    function showAllFilesModal(uuid) {
-      try {
-        // Get the clicked element and its data-files attribute
-        var clickedElement = event.target;
-        var filesJson = clickedElement.getAttribute('data-files');
-        
-        currentFiles = JSON.parse(filesJson);
-        currentFileIndex = 0;
-        
-        var modal = document.getElementById('galleryModal');
-        var title = document.getElementById('galleryTitle');
-        
-        title.textContent = 'Project Files (' + currentFiles.length + ' files)';
-        modal.style.display = 'flex';
-        
-        displayCurrentFile();
-      } catch (error) {
-        console.error('Error parsing files data:', error);
-        alert('Error loading files. Please try again.');
-      }
-    }
-    
-    function closeGalleryModal() {
-      var modal = document.getElementById('galleryModal');
-      modal.style.display = 'none';
-      currentFiles = [];
-      currentFileIndex = 0;
-    }
-    
-    function displayCurrentFile() {
-      if (currentFiles.length === 0) return;
-      
-      var file = currentFiles[currentFileIndex];
-      var display = document.getElementById('galleryFileDisplay');
-      var fileName = document.getElementById('fileName');
-      var fileDate = document.getElementById('fileDate');
-      var fileCounter = document.getElementById('fileCounter');
-      var fileType = document.getElementById('fileType');
-      var prevBtn = document.getElementById('prevBtn');
-      var nextBtn = document.getElementById('nextBtn');
-      
-      // Update file info
-      fileName.textContent = file.filename;
-      fileDate.textContent = new Date(file.ctime * 1000).toLocaleString();
-      fileCounter.textContent = (currentFileIndex + 1) + ' / ' + currentFiles.length;
-      fileType.textContent = file.type.toUpperCase();
-      
-      // Update navigation buttons
-      prevBtn.style.display = currentFileIndex > 0 ? 'block' : 'none';
-      nextBtn.style.display = currentFileIndex < currentFiles.length - 1 ? 'block' : 'none';
-      
-      // Generate URL dynamically
-      var fileUrl = '/view_file/' + encodeURIComponent(file.rel_path);
-      
-      // Display file content
-      if (file.type === 'pdf') {
-        display.innerHTML = '<iframe src="' + fileUrl + '" width="800" height="600" style="border:none; max-width:100%; max-height:100%;"></iframe>';
-      } else {
-        display.innerHTML = '<img src="' + fileUrl + '" style="max-width:100%; max-height:100%; object-fit:contain;" alt="' + file.filename + '">';
-      }
-    }
-    
-    function previousFile() {
-      if (currentFileIndex > 0) {
-        currentFileIndex--;
-        displayCurrentFile();
-      }
-    }
-    
-    function nextFile() {
-      if (currentFileIndex < currentFiles.length - 1) {
-        currentFileIndex++;
-        displayCurrentFile();
-      }
-    }
-    
-    // Keyboard navigation
-    document.addEventListener('keydown', function(event) {
-      if (document.getElementById('galleryModal').style.display === 'flex') {
-        if (event.key === 'ArrowLeft') {
-          previousFile();
-        } else if (event.key === 'ArrowRight') {
-          nextFile();
-        } else if (event.key === 'Escape') {
-          closeGalleryModal();
-        }
-      }
-    });
     </script>
+    
+    <!-- Footer with Logo and Copyright -->
+    <div class="header-footer">
+        <div class="logo-section">
+            <div class="logo">
+                <img src="{{ url_for('static', filename='rocket.jpg') }}" alt="Rocket Logo" style="width: 36px; height: 36px; object-fit: contain; border-radius: 50%; background: white;">
+            </div>
+            <div class="company-info">
+                <strong>ARCgis PRO DataBase</strong><br>
+                <span style="font-size: 11px;">פרוייקט שימור הידע של (נוסיף שיתאפשר)</span><br>
+                <span class="copyright">@Rocket Team Production</span>
+            </div>
+        </div>
+
+    </div>
 </body>
 </html>
 '''
@@ -1363,6 +1347,53 @@ def index():
             areas_stmt = areas_stmt.where(and_(*areas_query_filters))
         areas_stmt = areas_stmt.limit(areas_per_page).offset((areas_current_page - 1) * areas_per_page)
         areas = conn.execute(areas_stmt).fetchall()
+        
+        # Add file information for areas (show files of associated project)
+        areas_list = []
+        for area in areas:
+            area_dict = dict(area)  # Convert Row to dict
+            project_file_location = area_dict['project_file_location']
+            abs_path = os.path.abspath(project_file_location)
+            area_dict['project_abs_file_location'] = abs_path
+            
+            # Find all files (PDF, JPEG, PNG) for the associated project
+            file_types = [('pdf', 'pdf'), ('jpeg', 'img'), ('jpg', 'img'), ('png', 'img')]
+            all_files = []
+            most_recent = None
+            
+            for ext, ftype in file_types:
+                pattern = os.path.join(abs_path, f"*.{ext}")
+                files = glob2.glob(pattern)
+                for f in files:
+                    ctime = os.path.getctime(f)
+                    file_info = {
+                        'path': f, 
+                        'type': ftype, 
+                        'ctime': ctime,
+                        'filename': os.path.basename(f),
+                        'rel_path': os.path.relpath(f, os.path.abspath('.'))
+                    }
+                    all_files.append(file_info)
+                    
+                    # Track the most recent file for the single "View" option
+                    if (most_recent is None) or (ctime > most_recent['ctime']):
+                        most_recent = file_info
+            
+            # Sort files by creation time (newest first)
+            all_files.sort(key=lambda x: x['ctime'], reverse=True)
+            area_dict['project_all_files'] = all_files
+            area_dict['project_file_count'] = len(all_files)
+            
+            if most_recent:
+                area_dict['project_view_file_path'] = most_recent['rel_path']
+                area_dict['project_view_file_type'] = most_recent['type']
+            else:
+                area_dict['project_view_file_path'] = None
+                area_dict['project_view_file_type'] = None
+            
+            areas_list.append(area_dict)
+        
+        areas = areas_list  # Replace the original list with the processed one
 
 
     return render_template_string(
