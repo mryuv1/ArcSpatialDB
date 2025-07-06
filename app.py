@@ -1,8 +1,9 @@
-from flask import Flask, render_template_string, request, url_for, send_file
+from flask import Flask, render_template_string, request, url_for, send_file, redirect
 from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_
 import os
 import glob2
 from datetime import datetime
+import shutil
 
 app = Flask(__name__)
 
@@ -375,6 +376,29 @@ HTML = '''
         .actions-column a:hover {
             background-color: #2980b9;
         }
+
+        .actions-column form {
+            display: inline;
+            margin: 0;
+            padding: 0;
+        }
+        .actions-column button[type="submit"] {
+            display: inline-block;
+            margin: 2px 0;
+            padding: 4px 8px;
+            background-color: #e74c3c;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 0.9em;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            vertical-align: middle;
+        }
+        .actions-column button[type="submit"]:hover {
+            background-color: #c0392b;
+        }
     </style>
 </head>
 <body>
@@ -652,6 +676,7 @@ HTML = '''
             <table border="1" cellpadding="5">
               <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Scale</th><th class="actions-column">Actions</th></tr>
               {% for proj in results %}
+                {% if proj and proj.uuid %}
                 <tr>
                   <td>{{ proj.uuid }}</td>
                   <td>{{ proj.project_name }}</td>
@@ -661,19 +686,10 @@ HTML = '''
                   <td>{{ proj.paper_size }}</td>
                   <td>{{ proj.scale }}</td>
                   <td class="actions-column">
-                    {% if proj.view_file_path %}
-                      {% if proj.file_count == 1 %}
-                        <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
-                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
-                      {% else %}
-                        <a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a>
-                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
-                      {% endif %}
-                    {% else %}
-                      No file
-                    {% endif %}
-                  </td>
+                    <!-- DEBUG: {{ proj.uuid }} -->
+                    {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}<form method="post" action="{{ url_for('delete_project', uuid=proj.uuid|e) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this project?');"><button type="submit">Delete</button></form></td>
                 </tr>
+                {% endif %}
               {% endfor %}
             </table>
         </div>
@@ -706,28 +722,20 @@ HTML = '''
               </thead>
               <tbody>
                 {% for proj in projects %}
-                <tr>
-                  <td>{{ proj.uuid }}</td>
-                  <td>{{ proj.project_name }}</td>
-                  <td>{{ proj.user_name }}</td>
-                  <td>{{ proj.date }}</td>
-                  <td>{{ proj.file_location }}</td>
-                  <td>{{ proj.paper_size }}</td>
-                  <td>{{ proj.scale }}</td>
-                  <td class="actions-column">
-                    {% if proj.view_file_path %}
-                      {% if proj.file_count == 1 %}
-                        <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
-                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
-                      {% else %}
-                        <a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a>
-                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
-                      {% endif %}
-                    {% else %}
-                      <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
-                    {% endif %}
-                  </td>
-                </tr>
+                  {% if proj and proj.uuid %}
+                  <tr>
+                    <td>{{ proj.uuid }}</td>
+                    <td>{{ proj.project_name }}</td>
+                    <td>{{ proj.user_name }}</td>
+                    <td>{{ proj.date }}</td>
+                    <td>{{ proj.file_location }}</td>
+                    <td>{{ proj.paper_size }}</td>
+                    <td>{{ proj.scale }}</td>
+                    <td class="actions-column">
+                      <!-- DEBUG: {{ proj.uuid }} -->
+                      {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}</td>
+                  </tr>
+                  {% endif %}
                 {% endfor %}
               </tbody>
             </table>
@@ -1318,7 +1326,7 @@ def index():
             proj_dict['file_count'] = len(all_files)
             
             if most_recent:
-                proj_dict['view_file_path'] = most_recent['rel_path']
+                proj_dict['view_file_path'] = most_recent['path']
                 proj_dict['view_file_type'] = most_recent['type']
             else:
                 proj_dict['view_file_path'] = None
@@ -1424,7 +1432,32 @@ def view_file(rel_path):
         return "Access denied", 403
     return send_file(abs_path)
 
-
+@app.route('/delete_project/<uuid>', methods=['POST'])
+def delete_project(uuid):
+    import shutil
+    # Use engine.begin() for a transaction that auto-commits
+    with engine.begin() as conn:
+        # Get the file location for this project
+        sel = select(projects_table.c.file_location).where(projects_table.c.uuid == uuid)
+        result = conn.execute(sel).first()
+        print(f"[DEBUG] Deletion requested for UUID: {uuid}")
+        if result and result[0]:
+            folder = result[0]
+            print(f"[DEBUG] Project folder to delete: {folder}")
+            if os.path.exists(folder) and os.path.isdir(folder):
+                try:
+                    shutil.rmtree(folder)
+                    print(f"[DEBUG] Folder deleted: {folder}")
+                except Exception as e:
+                    print(f"[DEBUG] Error deleting folder: {e}")
+            else:
+                print(f"[DEBUG] Folder does not exist or is not a directory: {folder}")
+        proj_result = conn.execute(projects_table.delete().where(projects_table.c.uuid == uuid))
+        print(f"[DEBUG] Projects deleted: {proj_result.rowcount}")
+        area_result = conn.execute(areas_table.delete().where(areas_table.c.project_id == uuid))
+        print(f"[DEBUG] Areas deleted: {area_result.rowcount}")
+    print(f"[DEBUG] Deletion complete for UUID: {uuid}")
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)
