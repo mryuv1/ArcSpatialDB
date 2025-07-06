@@ -289,6 +289,23 @@ HTML = '''
             min-width: 200px;
         }
         
+        .center-query-btn button[type="button"] {
+            min-width: 200px;
+            background-color: #e74c3c;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+            margin-left: 10px;
+        }
+        
+        .center-query-btn button[type="button"]:hover {
+            background-color: #c0392b;
+        }
+        
         /* Actions column styling */
         .actions-column {
             min-width: 120px;
@@ -365,6 +382,7 @@ HTML = '''
       </div>
       <div class="center-query-btn">
         <input type="submit" value="Query">
+        <button type="button" onclick="resetForm()">Reset Query</button>
       </div>
     </form>
     <script>
@@ -397,6 +415,58 @@ HTML = '''
       } else {
         customFields.style.display = 'none';
       }
+    }
+
+    function resetForm() {
+      // Reset all form inputs
+      document.getElementById('searchForm').reset();
+      
+      // Hide custom size fields
+      document.getElementById('custom_size_fields').style.display = 'none';
+      
+      // Clear any additional user name dropdowns (keep only the first one)
+      var userNamesDiv = document.getElementById('user_name_fields');
+      var labels = userNamesDiv.querySelectorAll('label');
+      for (var i = 1; i < labels.length; i++) {
+        labels[i].remove();
+      }
+      
+      // Reset the first user name dropdown
+      if (labels.length > 0) {
+        var firstSelect = labels[0].querySelector('select');
+        if (firstSelect) {
+          firstSelect.value = '';
+        }
+      }
+    }
+
+    function copyPath(path) {
+      // Create a temporary textarea element
+      var textarea = document.createElement('textarea');
+      textarea.value = path;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      
+      // Select and copy the text
+      textarea.select();
+      document.execCommand('copy');
+      
+      // Remove the temporary element
+      document.body.removeChild(textarea);
+      
+      // Show a brief notification
+      var notification = document.createElement('div');
+      notification.textContent = 'Path copied to clipboard!';
+      notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #27ae60; color: white; padding: 10px 15px; border-radius: 5px; z-index: 10000; font-size: 14px;';
+      document.body.appendChild(notification);
+      
+      // Remove notification after 2 seconds
+      setTimeout(function() {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 2000);
     }
 
     // Function to get a URL parameter
@@ -527,8 +597,10 @@ HTML = '''
                     {% if proj.view_file_path %}
                       {% if proj.file_count == 1 %}
                         <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
                       {% else %}
                         <a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a>
+                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
                       {% endif %}
                     {% else %}
                       No file
@@ -562,6 +634,7 @@ HTML = '''
                   <th>File Location <br> <input type="text" name="projects_file_location_filter" class="filter-input" value="{{ projects_filters.file_location_filter }}" placeholder="Filter Location"></th>
                   <th>Paper Size <br> <input type="text" name="projects_paper_size_filter" class="filter-input" value="{{ projects_filters.paper_size_filter }}" placeholder="Filter Size"></th>
                   <th>Scale <br> <input type="text" name="projects_scale_filter" class="filter-input" value="{{ projects_filters.scale_filter }}" placeholder="Filter Scale"></th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -574,6 +647,19 @@ HTML = '''
                   <td>{{ proj.file_location }}</td>
                   <td>{{ proj.paper_size }}</td>
                   <td>{{ proj.scale }}</td>
+                  <td class="actions-column">
+                    {% if proj.view_file_path %}
+                      {% if proj.file_count == 1 %}
+                        <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
+                      {% else %}
+                        <a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a>
+                        <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
+                      {% endif %}
+                    {% else %}
+                      <a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
+                    {% endif %}
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -624,6 +710,7 @@ HTML = '''
                   <th>YMin <br> <input type="text" name="areas_ymin_filter" class="filter-input" value="{{ areas_filters.ymin_filter }}" placeholder="Filter YMin"></th>
                   <th>XMax <br> <input type="text" name="areas_xmax_filter" class="filter-input" value="{{ areas_filters.xmax_filter }}" placeholder="Filter XMax"></th>
                   <th>YMax <br> <input type="text" name="areas_ymax_filter" class="filter-input" value="{{ areas_filters.ymax_filter }}" placeholder="Filter YMax"></th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -635,6 +722,9 @@ HTML = '''
                   <td>{{ area.ymin }}</td>
                   <td>{{ area.xmax }}</td>
                   <td>{{ area.ymax }}</td>
+                  <td class="actions-column">
+                    <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -1205,6 +1295,54 @@ def index():
             projects_stmt = projects_stmt.where(and_(*projects_query_filters))
         projects_stmt = projects_stmt.limit(projects_per_page).offset((projects_current_page - 1) * projects_per_page)
         projects = conn.execute(projects_stmt).fetchall()
+        
+        # Add file information for projects (same as in search results)
+        projects_list = []
+        for proj in projects:
+            proj_dict = dict(proj)  # Convert Row to dict
+            rel_path = proj_dict['file_location']
+            abs_path = os.path.abspath(rel_path)
+            proj_dict['abs_file_location'] = abs_path
+            proj_dict['abs_file_location_url'] = abs_path.replace("\\", "/")
+            
+            # Find all files (PDF, JPEG, PNG) for this project
+            file_types = [('pdf', 'pdf'), ('jpeg', 'img'), ('jpg', 'img'), ('png', 'img')]
+            all_files = []
+            most_recent = None
+            
+            for ext, ftype in file_types:
+                pattern = os.path.join(abs_path, f"*.{ext}")
+                files = glob2.glob(pattern)
+                for f in files:
+                    ctime = os.path.getctime(f)
+                    file_info = {
+                        'path': f, 
+                        'type': ftype, 
+                        'ctime': ctime,
+                        'filename': os.path.basename(f),
+                        'rel_path': os.path.relpath(f, os.path.abspath('.'))
+                    }
+                    all_files.append(file_info)
+                    
+                    # Track the most recent file for the single "View" option
+                    if (most_recent is None) or (ctime > most_recent['ctime']):
+                        most_recent = file_info
+            
+            # Sort files by creation time (newest first)
+            all_files.sort(key=lambda x: x['ctime'], reverse=True)
+            proj_dict['all_files'] = all_files
+            proj_dict['file_count'] = len(all_files)
+            
+            if most_recent:
+                proj_dict['view_file_path'] = most_recent['rel_path']
+                proj_dict['view_file_type'] = most_recent['type']
+            else:
+                proj_dict['view_file_path'] = None
+                proj_dict['view_file_type'] = None
+            
+            projects_list.append(proj_dict)
+        
+        projects = projects_list  # Replace the original list with the processed one
 
         # Get total count for areas pagination
         areas_count_stmt = select(func.count()).select_from(areas_table)
@@ -1218,8 +1356,9 @@ def index():
         elif areas_total_pages == 0:
             areas_current_page = 1 # No pages if no items
 
-        # Query areas for the current page with filters
-        areas_stmt = select(*areas_table.c)
+        # Query areas for the current page with filters, joined with projects to get file location
+        areas_stmt = select(areas_table.c.id, areas_table.c.project_id, areas_table.c.xmin, areas_table.c.ymin, areas_table.c.xmax, areas_table.c.ymax, projects_table.c.file_location.label('project_file_location'))
+        areas_stmt = areas_stmt.select_from(areas_table.join(projects_table, areas_table.c.project_id == projects_table.c.uuid))
         if areas_query_filters:
             areas_stmt = areas_stmt.where(and_(*areas_query_filters))
         areas_stmt = areas_stmt.limit(areas_per_page).offset((areas_current_page - 1) * areas_per_page)
