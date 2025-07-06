@@ -778,7 +778,6 @@ HTML = '''
                   </th>
                   <th>File Location <br> <input type="text" name="projects_file_location_filter" class="filter-input" value="{{ projects_filters.file_location_filter }}" placeholder="Filter Location"></th>
                   <th>Paper Size <br> <input type="text" name="projects_paper_size_filter" class="filter-input" value="{{ projects_filters.paper_size_filter }}" placeholder="Filter Size"></th>
-                  <th>Scale <br> <input type="text" name="projects_scale_filter" class="filter-input" value="{{ projects_filters.scale_filter }}" placeholder="Filter Scale"></th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -792,7 +791,6 @@ HTML = '''
                     <td>{{ proj.date }}</td>
                     <td>{{ proj.file_location }}</td>
                     <td>{{ proj.paper_size }}</td>
-                    <td>{{ proj.scale }}</td>
                     <td class="actions-column">
                       <!-- DEBUG: {{ proj.uuid }} -->
                       {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}</td>
@@ -847,6 +845,7 @@ HTML = '''
                   <th>YMin <br> <input type="text" name="areas_ymin_filter" class="filter-input" value="{{ areas_filters.ymin_filter }}" placeholder="Filter YMin"></th>
                   <th>XMax <br> <input type="text" name="areas_xmax_filter" class="filter-input" value="{{ areas_filters.xmax_filter }}" placeholder="Filter XMax"></th>
                   <th>YMax <br> <input type="text" name="areas_ymax_filter" class="filter-input" value="{{ areas_filters.ymax_filter }}" placeholder="Filter YMax"></th>
+                  <th>Scale <br> <input type="text" name="areas_scale_filter" class="filter-input" value="{{ areas_filters.scale_filter }}" placeholder="Filter Scale"></th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -859,6 +858,7 @@ HTML = '''
                   <td>{{ area.ymin }}</td>
                   <td>{{ area.xmax }}</td>
                   <td>{{ area.ymax }}</td>
+                  <td>{{ area.scale.replace('Scale:', '').strip() if area.scale else '' }}</td>
                   <td class="actions-column">
                     {% if area.project_view_file_path %}
                       {% if area.project_file_count == 1 %}
@@ -1292,8 +1292,7 @@ def index():
         'date_from_filter': request.args.get('projects_date_from_filter', '', type=str),
         'date_to_filter': request.args.get('projects_date_to_filter', '', type=str),
         'file_location_filter': request.args.get('projects_file_location_filter', '', type=str),
-        'paper_size_filter': request.args.get('projects_paper_size_filter', '', type=str),
-        'scale_filter': request.args.get('projects_scale_filter', '', type=str)
+        'paper_size_filter': request.args.get('projects_paper_size_filter', '', type=str)
     }
 
     projects_query_filters = []
@@ -1309,14 +1308,6 @@ def index():
         projects_query_filters.append(projects_table.c.file_location.ilike(f"{projects_filters['file_location_filter']}%"))
     if projects_filters['paper_size_filter']:
         projects_query_filters.append(projects_table.c.paper_size.ilike(f"{projects_filters['paper_size_filter']}%"))
-    if projects_filters['scale_filter']:
-        # Attempt to cast to float for numeric comparison or partial string match
-        try:
-            scale_val = float(projects_filters['scale_filter'])
-            projects_query_filters.append(projects_table.c.scale == scale_val)
-        except ValueError:
-            # Fallback to string like for non-numeric filter input
-            projects_query_filters.append(projects_table.c.scale.cast(text("TEXT")).ilike(f"%{projects_filters['scale_filter']}%"))
 
 
     # For "All Areas" table
@@ -1330,6 +1321,7 @@ def index():
         'ymin_filter': request.args.get('areas_ymin_filter', '', type=str),
         'xmax_filter': request.args.get('areas_xmax_filter', '', type=str),
         'ymax_filter': request.args.get('areas_ymax_filter', '', type=str),
+        'scale_filter': request.args.get('areas_scale_filter', '', type=str),
     }
 
     areas_query_filters = []
@@ -1365,6 +1357,12 @@ def index():
             areas_query_filters.append(areas_table.c.ymax == ymax_val)
         except ValueError:
             areas_query_filters.append(areas_table.c.ymax == -1)
+    if areas_filters['scale_filter']:
+        try:
+            scale_val = float(areas_filters['scale_filter'])
+            areas_query_filters.append(areas_table.c.scale == scale_val)
+        except ValueError:
+            areas_query_filters.append(areas_table.c.scale == -1)
 
 
     with engine.connect() as conn:
@@ -1448,7 +1446,7 @@ def index():
             areas_current_page = 1 # No pages if no items
 
         # Query areas for the current page with filters, joined with projects to get file location
-        areas_stmt = select(areas_table.c.id, areas_table.c.project_id, areas_table.c.xmin, areas_table.c.ymin, areas_table.c.xmax, areas_table.c.ymax, projects_table.c.file_location.label('project_file_location'))
+        areas_stmt = select(areas_table.c.id, areas_table.c.project_id, areas_table.c.xmin, areas_table.c.ymin, areas_table.c.xmax, areas_table.c.ymax, areas_table.c.scale, projects_table.c.file_location.label('project_file_location'))
         areas_stmt = areas_stmt.select_from(areas_table.join(projects_table, areas_table.c.project_id == projects_table.c.uuid))
         if areas_query_filters:
             areas_stmt = areas_stmt.where(and_(*areas_query_filters))
