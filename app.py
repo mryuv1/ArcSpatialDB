@@ -1,5 +1,7 @@
-from flask import Flask, render_template_string, request, url_for
-from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text
+from flask import Flask, render_template_string, request, url_for, send_file
+from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_
+import os
+import glob
 
 app = Flask(__name__)
 DATABASE_URL = 'sqlite:///elements.db'
@@ -482,16 +484,23 @@ HTML = '''
       {% if results %}
         <div class="table-container">
             <table border="1" cellpadding="5">
-              <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Scale</th></tr>
+              <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Scale</th><th>Actions</th></tr>
               {% for proj in results %}
                 <tr>
                   <td>{{ proj.uuid }}</td>
                   <td>{{ proj.project_name }}</td>
                   <td>{{ proj.user_name }}</td>
                   <td>{{ proj.date }}</td>
-                  <td>{{ proj.file_location }}</td>
+                  <td><a href="file:///{{ proj.abs_file_location_url }}" target="_blank">{{ proj.file_location }}</a></td>
                   <td>{{ proj.paper_size }}</td>
                   <td>{{ proj.scale }}</td>
+                  <td>
+                    {% if proj.view_file_path %}
+                      <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                    {% else %}
+                      No file
+                    {% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </table>
@@ -628,6 +637,30 @@ HTML = '''
             </select>
         </label>
     </div>
+    <div id="fileModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center;">
+      <div id="fileModalContent" style="position:relative; background:#fff; padding:20px; border-radius:8px; max-width:90vw; max-height:90vh; overflow:auto;">
+        <button onclick="closeFileModal()" style="position:absolute; top:10px; right:10px; z-index:10000;">Close</button>
+        <div id="fileModalBody"></div>
+      </div>
+    </div>
+    <script>
+    function showFileModal(url, type) {
+      var modal = document.getElementById('fileModal');
+      var body = document.getElementById('fileModalBody');
+      if (type === 'pdf') {
+        body.innerHTML = '<iframe src="' + url + '" width="800" height="600" style="border:none;"></iframe>';
+      } else if (type === 'img') {
+        body.innerHTML = '<img src="' + url + '" style="max-width:80vw; max-height:80vh; display:block; margin:auto;" />';
+      }
+      modal.style.display = 'flex';
+    }
+    function closeFileModal() {
+      var modal = document.getElementById('fileModal');
+      var body = document.getElementById('fileModalBody');
+      body.innerHTML = '';
+      modal.style.display = 'none';
+    }
+    </script>
 </body>
 </html>
 '''
@@ -684,7 +717,7 @@ def index():
         user_name_list = request.form.getlist('user_name')
         selected_user_names = [n for n in user_name_list if n]
         if selected_user_names:
-            filters.append(projects_table.c.user_name.in_([n + '%' for n in selected_user_names]))
+            filters.append(or_(*[projects_table.c.user_name.ilike(f"{n}%") for n in selected_user_names]))
         paper_size = request.form.get('paper_size', '').strip()
         custom_height = request.form.get('custom_height', '').strip()
         custom_width = request.form.get('custom_width', '').strip()
@@ -757,6 +790,28 @@ def index():
                     results = [dict(row) for row in conn.execute(sel)]
                 else:
                     results = []
+            # Add absolute file location for file explorer links
+            for proj in results or []:
+                rel_path = proj['file_location']
+                abs_path = os.path.abspath(rel_path)
+                proj['abs_file_location'] = abs_path
+                proj['abs_file_location_url'] = abs_path.replace("\\", "/")
+                # Find the most recent file among PDF, JPEG, PNG
+                file_types = [('pdf', 'pdf'), ('jpeg', 'img'), ('png', 'img')]
+                most_recent = None
+                for ext, ftype in file_types:
+                    pattern = os.path.join(abs_path, f"*.{ext}")
+                    files = glob.glob(pattern)
+                    for f in files:
+                        ctime = os.path.getctime(f)
+                        if (most_recent is None) or (ctime > most_recent['ctime']):
+                            most_recent = {'path': f, 'type': ftype, 'ctime': ctime}
+                if most_recent:
+                    proj['view_file_path'] = most_recent['path']
+                    proj['view_file_type'] = most_recent['type']
+                else:
+                    proj['view_file_path'] = None
+                    proj['view_file_type'] = None
     # This block handles GET requests for pagination and table filters
     # For "All Projects" table
     projects_current_page = request.args.get('page', 1, type=int)
@@ -903,6 +958,15 @@ def index():
         areas_filters=areas_filters,
         request=request # Pass request object to access form values for sticky inputs
     )
+
+@app.route('/view_file/<path:rel_path>')
+def view_file(rel_path):
+    import os
+    abs_path = os.path.abspath(rel_path)
+    # Security: Only allow files inside your project directory
+    if not abs_path.startswith(os.path.abspath('.')):
+        return "Access denied", 403
+    return send_file(abs_path)
 
 if __name__ == '__main__':
     app.run(debug=True)
