@@ -313,7 +313,7 @@ HTML = '''
         }
 
         /* Responsive adjustments */
-        @media (max-width: 768px) {
+                @media (max-width: 768px) {
             form {
                 grid-template-columns: 1fr;
             }
@@ -328,27 +328,55 @@ HTML = '''
                 grid-column: span 1;
                 flex-direction: column;
             }
-            #relative_size_fields {
+            #spatial_options_fields {
                 grid-column: span 1;
                 flex-direction: column;
+                gap: 10px;
+            }
+            #percentage_inputs_fields {
+                grid-column: span 1;
+                flex-direction: column;
+                gap: 10px;
             }
         }
         
-        /* Relative size styling */
-        #relative_size_fields {
+        /* Spatial options styling */
+        #spatial_options_fields {
             grid-column: span 2;
             display: flex;
-            gap: 15px;
+            flex-wrap: wrap;
+            gap: 20px;
             align-items: center;
             margin-top: 10px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
         }
         
-        #relative_size_fields input[type="checkbox"] {
+        #spatial_options_fields input[type="checkbox"] {
             margin-right: 8px;
             transform: scale(1.2);
         }
         
-        #relative_size_fields input[type="number"] {
+        #spatial_options_fields label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0;
+            font-weight: normal;
+            white-space: nowrap;
+        }
+        
+        /* Percentage inputs styling */
+        #percentage_inputs_fields {
+            grid-column: span 2;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        #percentage_inputs_fields input[type="number"] {
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -357,14 +385,18 @@ HTML = '''
             box-sizing: border-box;
         }
         
-        #relative_size_fields label {
+        #percentage_inputs_fields label {
             display: flex;
             align-items: center;
             margin-bottom: 0;
             font-weight: normal;
         }
         
-        #relative_size_fields .percentage-input {
+        .percentage-input {
+            display: none;
+        }
+        
+        .overlap-percentage-input {
             display: none;
         }
         .center-query-btn {
@@ -461,9 +493,15 @@ HTML = '''
     <form method="post" id="searchForm">
       <label>Bottom Left (XMin/YMin): <input name="bottom_left" type="text" placeholder="e.g., 10.5/20.1" value="{{ request.form.bottom_left if request.form.bottom_left else '' }}"></label>
       <label>Top Right (XMax/YMax): <input name="top_right" type="text" placeholder="e.g., 30.0/40.8" value="{{ request.form.top_right if request.form.top_right else '' }}"></label>
-      <div id="relative_size_fields">
+      <div id="spatial_options_fields">
         <label><input name="relative_size" type="checkbox" value="1" {% if request.form.relative_size %}checked{% endif %} onchange="toggleRelativeSize()"> Relative Size</label>
-        <label class="percentage-input">Percentage (±): <input name="size_percentage" type="number" min="0" max="1000" step="0.1" placeholder="e.g., 10" value="{{ request.form.size_percentage if request.form.size_percentage else '10' }}">%</label>
+        <label><input name="inside" type="checkbox" value="1" {% if request.form.inside %}checked{% endif %}> Inside</label>
+        <label><input name="outside" type="checkbox" value="1" {% if request.form.outside %}checked{% endif %}> Outside</label>
+        <label><input name="percentage_overlap" type="checkbox" value="1" {% if request.form.percentage_overlap %}checked{% endif %} onchange="togglePercentageOverlap()"> Percentage Overlap</label>
+      </div>
+      <div id="percentage_inputs_fields">
+        <label class="percentage-input">Size Percentage (±): <input name="size_percentage" type="number" min="0" max="1000" step="0.1" placeholder="e.g., 10" value="{{ request.form.size_percentage if request.form.size_percentage else '10' }}">%</label>
+        <label class="overlap-percentage-input">Overlap Percentage (%): <input name="overlap_percentage" type="number" min="0" max="100" step="0.1" placeholder="e.g., 50" value="{{ request.form.overlap_percentage if request.form.overlap_percentage else '50' }}">%</label>
       </div>
       <label class="full-width-field">Project UUID: <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef" value="{{ request.form.uuid if request.form.uuid else '' }}"></label>
       <div id="user_name_fields" style="grid-column: 1 / -1;">
@@ -555,9 +593,20 @@ HTML = '''
       var percentageInput = document.querySelector('.percentage-input');
       
       if (relativeSizeCheckbox.checked) {
-        percentageInput.style.display = 'block';
+        percentageInput.style.display = 'flex';
       } else {
         percentageInput.style.display = 'none';
+      }
+    }
+
+    function togglePercentageOverlap() {
+      var percentageOverlapCheckbox = document.querySelector('input[name="percentage_overlap"]');
+      var overlapPercentageInput = document.querySelector('.overlap-percentage-input');
+      
+      if (percentageOverlapCheckbox.checked) {
+        overlapPercentageInput.style.display = 'flex';
+      } else {
+        overlapPercentageInput.style.display = 'none';
       }
     }
 
@@ -568,8 +617,9 @@ HTML = '''
       // Hide custom size fields
       document.getElementById('custom_size_fields').style.display = 'none';
       
-      // Hide relative size percentage input
+      // Hide percentage inputs
       document.querySelector('.percentage-input').style.display = 'none';
+      document.querySelector('.overlap-percentage-input').style.display = 'none';
       
       // Clear any additional user name dropdowns (keep only the first one)
       var userNamesDiv = document.getElementById('user_name_fields');
@@ -724,8 +774,9 @@ HTML = '''
       // Initialize custom size fields state
       toggleCustomSize();
       
-      // Initialize relative size fields state
+      // Initialize percentage input fields state
       toggleRelativeSize();
+      togglePercentageOverlap();
     }
     </script>
     {% if error %}
@@ -1095,6 +1146,27 @@ def calculate_area_size(xmin, ymin, xmax, ymax):
     height = abs(ymax - ymin)
     return width * height
 
+def calculate_overlap_percentage(area_xmin, area_ymin, area_xmax, area_ymax, query_xmin, query_ymin, query_xmax, query_ymax):
+    """Calculate the percentage of area that overlaps with the query rectangle"""
+    # Calculate intersection
+    intersect_xmin = max(area_xmin, query_xmin)
+    intersect_ymin = max(area_ymin, query_ymin)
+    intersect_xmax = min(area_xmax, query_xmax)
+    intersect_ymax = min(area_ymax, query_ymax)
+    
+    # Check if there's an intersection
+    if intersect_xmin >= intersect_xmax or intersect_ymin >= intersect_ymax:
+        return 0.0
+    
+    # Calculate areas
+    area_size = (area_xmax - area_xmin) * (area_ymax - area_ymin)
+    intersect_size = (intersect_xmax - intersect_xmin) * (intersect_ymax - intersect_ymin)
+    
+    if area_size == 0:
+        return 0.0
+    
+    return (intersect_size / area_size) * 100.0
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     results = None
@@ -1114,6 +1186,12 @@ def index():
         relative_size_enabled = request.form.get('relative_size') == '1'
         size_percentage = request.form.get('size_percentage', '10').strip()
         
+        # New spatial relationship options
+        inside_enabled = request.form.get('inside') == '1'
+        outside_enabled = request.form.get('outside') == '1'
+        percentage_overlap_enabled = request.form.get('percentage_overlap') == '1'
+        overlap_percentage = request.form.get('overlap_percentage', '50').strip()
+        
         if bottom_left and top_right:
             bl = parse_point(bottom_left)
             tr = parse_point(top_right)
@@ -1126,6 +1204,9 @@ def index():
                     error = 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'
                 else:
                     join_areas = True
+                    
+                    # Build spatial filters based on selected options
+                    spatial_filters = []
                     
                     if relative_size_enabled:
                         try:
@@ -1140,24 +1221,64 @@ def index():
                                 min_size = reference_area_size * (1 - percentage / 100)
                                 max_size = reference_area_size * (1 + percentage / 100)
                                 
-                                # Add spatial overlap filters
-                                filters.append(areas_table.c.xmin < xmax)
-                                filters.append(areas_table.c.xmax > xmin)
-                                filters.append(areas_table.c.ymin < ymax)
-                                filters.append(areas_table.c.ymax > ymin)
-                                
                                 # Add size comparison filter using calculated area
                                 area_size_expr = (areas_table.c.xmax - areas_table.c.xmin) * (areas_table.c.ymax - areas_table.c.ymin)
-                                filters.append(area_size_expr >= min_size)
-                                filters.append(area_size_expr <= max_size)
+                                size_filters = [
+                                    area_size_expr >= min_size,
+                                    area_size_expr <= max_size
+                                ]
+                                spatial_filters.append(and_(*size_filters))
                         except ValueError:
                             error = 'Percentage must be a valid number.'
-                    else:
-                        # Standard spatial overlap without size filtering
-                        filters.append(areas_table.c.xmin < xmax)
-                        filters.append(areas_table.c.xmax > xmin)
-                        filters.append(areas_table.c.ymin < ymax)
-                        filters.append(areas_table.c.ymax > ymin)
+                    # Add spatial relationship filters
+                    if inside_enabled:
+                        # Inside: area is completely within the query rectangle
+                        inside_filters = [
+                            areas_table.c.xmin >= xmin,
+                            areas_table.c.xmax <= xmax,
+                            areas_table.c.ymin >= ymin,
+                            areas_table.c.ymax <= ymax
+                        ]
+                        spatial_filters.append(and_(*inside_filters))
+                    
+                    if outside_enabled:
+                        # Outside: area is completely outside the query rectangle
+                        outside_filters = [
+                            or_(
+                                areas_table.c.xmax < xmin,
+                                areas_table.c.xmin > xmax,
+                                areas_table.c.ymax < ymin,
+                                areas_table.c.ymin > ymax
+                            )
+                        ]
+                        spatial_filters.append(or_(*outside_filters))
+                    
+                    if percentage_overlap_enabled:
+                        try:
+                            overlap_percentage_val = float(overlap_percentage)
+                            if overlap_percentage_val < 0 or overlap_percentage_val > 100:
+                                error = 'Overlap percentage must be between 0 and 100.'
+                            else:
+                                # For percentage overlap, we'll filter after the query
+                                # Store the parameters for post-processing
+                                spatial_filters.append(text("1=1"))  # Include all areas for percentage calculation
+                        except ValueError:
+                            error = 'Overlap percentage must be a valid number.'
+                    
+                    # If no specific spatial relationship is selected, use standard overlap
+                    if not (relative_size_enabled or inside_enabled or outside_enabled or percentage_overlap_enabled):
+                        # Standard spatial overlap
+                        overlap_filters = [
+                            areas_table.c.xmin < xmax,
+                            areas_table.c.xmax > xmin,
+                            areas_table.c.ymin < ymax,
+                            areas_table.c.ymax > ymin
+                        ]
+                        spatial_filters.append(and_(*overlap_filters))
+                    
+                    # Combine all spatial filters with OR operator
+                    if spatial_filters:
+                        filters.append(or_(*spatial_filters))
         # Parse other filters
         uuid = request.form.get('uuid', '').strip()
         if uuid:
@@ -1230,8 +1351,39 @@ def index():
                 if join_areas:
                     # Join projects and areas, filter by area, select distinct projects
                     join_stmt = projects_table.join(areas_table, projects_table.c.uuid == areas_table.c.project_id)
-                    sel = select(*projects_table.c).select_from(join_stmt).where(and_(*filters)).distinct()
-                    results = [dict(row) for row in conn.execute(sel)]
+                    
+                    # Handle percentage overlap separately
+                    if percentage_overlap_enabled:
+                        # Get all areas and projects first, then filter by percentage
+                        sel = select(projects_table.c, areas_table.c).select_from(join_stmt)
+                        if filters:
+                            sel = sel.where(and_(*filters))
+                        all_results = conn.execute(sel).fetchall()
+                        
+                        # Filter by percentage overlap
+                        filtered_projects = set()
+                        for row in all_results:
+                            project_data = {col: getattr(row, col) for col in projects_table.c.keys()}
+                            area_data = {col: getattr(row, col) for col in areas_table.c.keys()}
+                            
+                            overlap_pct = calculate_overlap_percentage(
+                                area_data['xmin'], area_data['ymin'], area_data['xmax'], area_data['ymax'],
+                                xmin, ymin, xmax, ymax
+                            )
+                            
+                            if overlap_pct >= float(overlap_percentage):
+                                filtered_projects.add(project_data['uuid'])
+                        
+                        # Get the filtered projects
+                        if filtered_projects:
+                            sel = select(*projects_table.c).where(projects_table.c.uuid.in_(filtered_projects))
+                            results = [dict(row) for row in conn.execute(sel)]
+                        else:
+                            results = []
+                    else:
+                        # Standard filtering
+                        sel = select(*projects_table.c).select_from(join_stmt).where(and_(*filters)).distinct()
+                        results = [dict(row) for row in conn.execute(sel)]
                 elif filters:
                     # Only project filters
                     sel = select(*projects_table.c).where(and_(*filters))
