@@ -50,14 +50,18 @@ def detect_paper_size(width_mm, height_mm, tolerance=2):
 
     return f"Custom Size: Height: {height_mm / 1000} cm, Width: {width_mm / 1000} cm"
 
-def commit_to_the_db(project_id, project_name, user_name, date, file_location, paper_size, info_per_map_frame):
+def commit_to_the_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame):
     DATABASE_URL = f'sqlite:///{DB_PATH}'
     engine = create_engine(DATABASE_URL, echo=True)
     Session = sessionmaker(bind=engine)
     session = Session()
     Base.metadata.create_all(engine)
+    # Generate unique ID
+    unique_id = str(uuid.uuid4())[:8]
+    while session.query(Project).filter(Project.uuid == unique_id).first():
+        unique_id = str(uuid.uuid4())[:8]
     project = Project(
-    uuid=project_id,
+    uuid=unique_id,
     project_name=project_name,
     user_name=user_name,
     date=date,
@@ -76,6 +80,44 @@ def commit_to_the_db(project_id, project_name, user_name, date, file_location, p
     session.add(project)
     session.commit()
     session.close()
+    return unique_id
+    
+def convert_any_to_wgs84_utm(x, y, spatial_ref=None):
+    """
+    Convert (x, y) from any spatial reference to WGS84 UTM.
+    If spatial_ref is None, assumes input is WGS84 Geographic (EPSG:4326).
+    Returns: (x_utm, y_utm, utm_epsg)
+    """
+    # Fallback to WGS84 GEO if spatial_ref is None
+    if spatial_ref is None:
+        spatial_ref = arcpy.SpatialReference(4326)
+
+    try:
+        point = arcpy.PointGeometry(arcpy.Point(x, y), spatial_ref)
+    except Exception as e:
+        raise RuntimeError(f"Failed to create PointGeometry: {e}")
+
+    try:
+        point_geo = point.projectAs(arcpy.SpatialReference(4326))  # Ensure in WGS84 GEO
+    except Exception as e:
+        raise RuntimeError(f"Failed to project to WGS84: {e}")
+
+    lon, lat = point_geo.centroid.X, point_geo.centroid.Y
+
+    # Compute UTM zone and hemisphere
+    zone_number = int((lon + 180) / 6) + 1
+    is_northern = lat >= 0
+    utm_epsg = 32600 + zone_number if is_northern else 32700 + zone_number
+
+    try:
+        utm_ref = arcpy.SpatialReference(utm_epsg)
+        point_utm = point_geo.projectAs(utm_ref)
+    except Exception as e:
+        raise RuntimeError(f"Failed to project to UTM EPSG:{utm_epsg}: {e}")
+
+    return point_utm.centroid.X, point_utm.centroid.Y, utm_epsg
+
+
 
 
 class Toolbox(object):
@@ -224,21 +266,9 @@ class ExportLayoutTool(object):
         if not layout:
             raise Exception(f"Layout '{layout_name}' not found.")
 
-        # Generate unique ID
-        unique_id = str(uuid.uuid4())[:8]
-        messages.addMessage(f"Export ID: {unique_id}")
-
         # Create new export directory
         export_subfolder = os.path.join(export_folder, export_name)
         os.makedirs(export_subfolder, exist_ok=True)
-
-        # Update text element with export ID
-        text_elements = layout.listElements("TEXT_ELEMENT")
-        id_text = next((el for el in text_elements if el.name == "ExportID"), None)
-        if id_text:
-            id_text.text = f"Export ID: {unique_id}"
-        else:
-            messages.addWarningMessage("No text element named 'ExportID' found on layout.")
 
         # Report map extents
         map_frames = layout.listElements("MAPFRAME_ELEMENT")
@@ -248,26 +278,46 @@ class ExportLayoutTool(object):
         else:
             for mf in map_frames:
                 extent = mf.camera.getExtent()
-                bottom_left = (extent.XMin, extent.YMin)
-                top_right = (extent.XMax, extent.YMax)
-                
-                messages.addMessage(f"Map Frame '{mf.name}':")
-                messages.addMessage(f"  Bottom Left (XMin, YMin): {bottom_left}")
-                messages.addMessage(f"  Top Right  (XMax, YMax): {top_right}")
+                spatial_ref = extent.spatialReference  # original CRS
+                messages.addMessage(f"Map Frame '{mf.name}', spatial_ref: {spatial_ref}")
+                # Convert corners to UTM
+                x_min_utm, y_min_utm, utm_epsg = convert_any_to_wgs84_utm(extent.XMin, extent.YMin, spatial_ref)
+                x_max_utm, y_max_utm, _ = convert_any_to_wgs84_utm(extent.XMax, extent.YMax, spatial_ref)
+
+                messages.addMessage(f"Map Frame '{mf.name}' in WGS84 UTM (EPSG:{utm_epsg}):")
+                messages.addMessage(f"  Bottom Left (XMin, YMin): ({x_min_utm}, {y_min_utm})")
+                messages.addMessage(f"  Top Right  (XMax, YMax): ({x_max_utm}, {y_max_utm})")
                 scale = mf.camera.scale
                 messages.addMessage(f"Map Frame '{mf.name}' Scale: 1:{int(scale)}")
                 scale_str = f"Scale: 1:{int(scale)}"
-                x_min = extent.XMin
-                y_min = extent.YMin
-                x_max = extent.XMax
-                y_max = extent.YMax
-                info_dict = {"scale":scale_str, "x_min": x_min ,"x_max": x_max,"y_min": y_min,"y_max": y_max}
+                info_dict = {
+                    "scale": scale_str,
+                    "x_min": x_min_utm,
+                    "y_min": y_min_utm,
+                    "x_max": x_max_utm,
+                    "y_max": y_max_utm
+                }
                 info_per_map_frame.append(info_dict)
                 
 
         # Export layout
         export_file = os.path.join(export_subfolder, f"{export_name}.{export_format.lower()}")
-            
+        # commit to the SQL DB
+        paper_size = detect_paper_size(layout.pageWidth, layout.pageHeight)
+        messages.addMessage(f"{paper_size}")
+        username = getpass.getuser()
+        messages.addMessage(f"{username}")
+        current_date = datetime.now().strftime("%d-%m-%y")
+        messages.addMessage(f"{current_date}")
+        unique_id = commit_to_the_db(export_name, username, current_date, export_subfolder, paper_size, info_per_map_frame)
+        messages.addMessage(f"Export ID: {unique_id}")
+        # Update text element with export ID
+        text_elements = layout.listElements("TEXT_ELEMENT")
+        id_text = next((el for el in text_elements if el.name == "ExportID"), None)
+        if id_text:
+            id_text.text = f"Export ID: {unique_id}"
+        else:
+            messages.addWarningMessage("No text element named 'ExportID' found on layout.")
         if export_format == "PDF":
             layout.exportToPDF(export_file, resolution=dpi)
         elif export_format == "PNG":
@@ -284,12 +334,6 @@ class ExportLayoutTool(object):
         aprx_copy = os.path.join(export_subfolder, f"{export_name}.aprx")
         aprx.saveACopy(aprx_copy)
         messages.addMessage(f"Saved project copy as: {aprx_copy}")
-        paper_size = detect_paper_size(layout.pageWidth, layout.pageHeight)
-        messages.addMessage(f"{paper_size}")
-        username = getpass.getuser()
-        messages.addMessage(f"{username}")
-        current_date = datetime.now().strftime("%d-%m-%y")
-        messages.addMessage(f"{current_date}")
         open_after_export = bool(parameters[7].value)
         if open_after_export:
             try:
@@ -297,5 +341,4 @@ class ExportLayoutTool(object):
                 messages.addMessage(f"Opened exported file: {export_file}")
             except Exception as e:
                 messages.addWarningMessage(f"Failed to open file automatically: {e}")
-        # commit to the SQL DB
-        commit_to_the_db(unique_id, export_name, username, current_date, export_subfolder, paper_size, info_per_map_frame)
+
