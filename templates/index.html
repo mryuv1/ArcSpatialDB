@@ -785,7 +785,7 @@
       {% if results %}
         <div class="table-container">
             <table border="1" cellpadding="5">
-              <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Scale</th><th>Associated Scales</th><th class="actions-column">Actions</th></tr>
+              <tr><th>UUID</th><th>Project Name</th><th>User Name</th><th>Date</th><th>File Location</th><th>Paper Size</th><th>Description</th><th>Scale</th><th>Associated Scales</th><th class="actions-column">Actions</th></tr>
               {% for proj in results %}
                 {% if proj and proj.uuid %}
                 <tr>
@@ -795,6 +795,7 @@
                   <td>{{ proj.date }}</td>
                   <td><a href="file:///{{ proj.abs_file_location_url }}" target="_blank">{{ proj.file_location }}</a></td>
                   <td>{{ proj.paper_size }}</td>
+                  <td>{{ proj.description }}</td>
                   <td>{{ proj.scale }}</td>
 				  <td>{{ proj.get('associated_scales', 'N/A') }}</td>
                   <td class="actions-column">
@@ -828,6 +829,7 @@
                   </th>
                   <th>File Location <br> <input type="text" name="projects_file_location_filter" class="filter-input" value="{{ projects_filters.file_location_filter }}" placeholder="Filter Location"></th>
                   <th>Paper Size <br> <input type="text" name="projects_paper_size_filter" class="filter-input" value="{{ projects_filters.paper_size_filter }}" placeholder="Filter Size"></th>
+                  <th>Description</th>
                   <th>Associated Scales <br> <input type="text" name="projects_associated_scales_filter" class="filter-input" value="{{ projects_filters.associated_scales_filter }}" placeholder="Filter Scales"></th>
                   <th>Actions</th>
                 </tr>
@@ -842,7 +844,8 @@
                     <td>{{ proj.date }}</td>
                     <td>{{ proj.file_location }}</td>
                     <td>{{ proj.paper_size }}</td>
-					<td>{{ proj.get('associated_scales', 'N/A') }}</td> 
+                    <td>{{ proj.description }}</td>
+				<td>{{ proj.get('associated_scales', 'N/A') }}</td> 
                     <td class="actions-column">
                       <!-- DEBUG: {{ proj.uuid }} -->
                       {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}</td>

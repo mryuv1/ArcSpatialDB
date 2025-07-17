@@ -298,6 +298,7 @@ def index():
                             projects_table.c.date,
                             projects_table.c.file_location,
                             projects_table.c.paper_size,
+                            projects_table.c.description,  # <-- Added
                             func.group_concat(distinct(areas_table.c.scale)).label('associated_scales')
                         ).select_from(join_stmt).where(
                             projects_table.c.uuid.in_(list(filtered_project_uuids))
@@ -307,7 +308,8 @@ def index():
                             projects_table.c.user_name,
                             projects_table.c.date,
                             projects_table.c.file_location,
-                            projects_table.c.paper_size
+                            projects_table.c.paper_size,
+                            projects_table.c.description  # <-- Added
                         )
                         results = [row._mapping for row in conn.execute(sel)]
 
@@ -332,6 +334,7 @@ def index():
                         projects_table.c.date,
                         projects_table.c.file_location,
                         projects_table.c.paper_size,
+                        projects_table.c.description,  # <-- Added
                         func.group_concat(distinct(areas_table.c.scale)).label('associated_scales') # Aggregate scales
                     ).select_from(join_stmt)
 
@@ -344,7 +347,8 @@ def index():
                         projects_table.c.user_name,
                         projects_table.c.date,
                         projects_table.c.file_location,
-                        projects_table.c.paper_size
+                        projects_table.c.paper_size,
+                        projects_table.c.description  # <-- Added
                     )
                     results = [row._mapping for row in conn.execute(sel)]
 
@@ -494,6 +498,7 @@ def index():
             projects_table.c.date,
             projects_table.c.file_location,
             projects_table.c.paper_size,
+            projects_table.c.description,  # <-- Added
             func.group_concat(distinct(areas_table.c.scale)).label('associated_scales')
         ).select_from(projects_join_stmt).group_by(
             projects_table.c.uuid,
@@ -501,7 +506,8 @@ def index():
             projects_table.c.user_name,
             projects_table.c.date,
             projects_table.c.file_location,
-            projects_table.c.paper_size
+            projects_table.c.paper_size,
+            projects_table.c.description  # <-- Added
         )
 
         # Apply basic filters directly
@@ -530,7 +536,8 @@ def index():
             projects_table.c.user_name,
             projects_table.c.date,
             projects_table.c.file_location,
-            projects_table.c.paper_size
+            projects_table.c.paper_size,
+            projects_table.c.description  # <-- Added
         )
         if projects_filters['associated_scales_filter']:
              scale_filter_val = projects_filters['associated_scales_filter']
