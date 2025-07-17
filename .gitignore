@@ -1,0 +1,25 @@
+# PyCharm IDE files
+.idea/
+
+# Python bytecode and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Temporary files created by Office
+~$*.pptx
+
+# Logs
+*.log
