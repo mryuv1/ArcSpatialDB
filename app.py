@@ -10,8 +10,6 @@ DATABASE = 'elements.db'
 UPLOAD_FOLDER = 'sampleDataset'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
 
 # Custom filter for datetime formatting
 @app.template_filter('datetime')
