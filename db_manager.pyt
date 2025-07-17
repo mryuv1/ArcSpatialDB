@@ -307,6 +307,7 @@ class ExportLayoutTool(object):
                     "y_max": int(y_max_utm)
                 }
                 info_per_map_frame.append(info_dict)
+                messages.addMessage(f"{info_dict['x_min']}")
                 
 
         # Export layout
