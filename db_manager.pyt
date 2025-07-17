@@ -14,6 +14,7 @@ class Project(Base):
     __tablename__ = 'projects'
     uuid = Column(String, primary_key=True)
     project_name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
     user_name = Column(String, nullable=False)
     date = Column(String, nullable=False)  # ISO format
     file_location = Column(String, nullable=False)
@@ -50,7 +51,7 @@ def detect_paper_size(width_mm, height_mm, tolerance=2):
 
     return f"Custom Size: Height: {height_mm / 1000} cm, Width: {width_mm / 1000} cm"
 
-def commit_to_the_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame):
+def commit_to_the_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description):
     DATABASE_URL = f'sqlite:///{DB_PATH}'
     engine = create_engine(DATABASE_URL, echo=True)
     Session = sessionmaker(bind=engine)
@@ -63,6 +64,7 @@ def commit_to_the_db(project_name, user_name, date, file_location, paper_size, i
     project = Project(
     uuid=unique_id,
     project_name=project_name,
+    description=description,
     user_name=user_name,
     date=date,
     file_location=file_location,
@@ -147,7 +149,6 @@ class ExportLayoutTool(object):
         param0.filter.list = layout_names
         if layout_names:
             param0.value = layout_names[0]
-
         # Output folder
         param1 = arcpy.Parameter(
             displayName="Export Folder",
@@ -156,13 +157,19 @@ class ExportLayoutTool(object):
             parameterType="Required",
             direction="Input"
         )
-
         # Export Name (used for folder and file names)
         param2 = arcpy.Parameter(
             displayName="Export Name",
             name="export_name",
             datatype="GPString",
             parameterType="Required",
+            direction="Input"
+        )
+        param2b = arcpy.Parameter(
+            displayName="Description",
+            name="description",
+            datatype="GPString",
+            parameterType="Optional",
             direction="Input"
         )
 
@@ -220,7 +227,7 @@ class ExportLayoutTool(object):
         )
         param7.value = False  # Default is off
 
-        return [param0, param1, param2, param3, param4, param5, param6, param7]
+        return [param0, param1, param2, param2b, param3, param4, param5, param6, param7]
 
     def isLicensed(self):
         return True
@@ -228,11 +235,11 @@ class ExportLayoutTool(object):
     def updateParameters(self, parameters):
         aprx = arcpy.mp.ArcGISProject("CURRENT")
         layout_name = parameters[0].value
-        dpi = parameters[4].value or 300
-        export_format = parameters[3].value
+        dpi = parameters[5].value or 300
+        export_format = parameters[4].value
 
         # Enable JPEG quality if format is JPEG
-        parameters[5].enabled = (export_format == "JPEG")
+        parameters[6].enabled = (export_format == "JPEG")
 
         # Calculate image size from layout page size
         if layout_name:
@@ -242,8 +249,8 @@ class ExportLayoutTool(object):
                 height_inch = layout.pageHeight
                 width_px = int(round(width_inch * dpi / 25.4))
                 height_px = int(round(height_inch * dpi / 25.4))
-                parameters[6].enabled = True
-                parameters[6].value = f"Height: {height_px} Width: {width_px}"
+                parameters[7].enabled = True
+                parameters[7].value = f"Height: {height_px} Width: {width_px}"
 
     def updateMessages(self, parameters):
         return
@@ -252,11 +259,12 @@ class ExportLayoutTool(object):
         layout_name = parameters[0].valueAsText
         export_folder = parameters[1].valueAsText
         export_name = parameters[2].valueAsText.strip().replace(" ", "_")
-        export_format = parameters[3].valueAsText.upper()
-        dpi = int(parameters[4].value or 300)
+        export_format = parameters[4].valueAsText.upper()
+        dpi = int(parameters[5].value or 300)
+        description = parameters[3].valueAsText if parameters[3].value else ""
 
         try:
-            quality = int(parameters[5].value)
+            quality = int(parameters[6].value)
         except (TypeError, ValueError):
             messages.addWarningMessage("Invalid JPEG quality value. Using default (80).")
             quality = 80
@@ -293,10 +301,10 @@ class ExportLayoutTool(object):
                 scale_str = f"Scale: 1:{int(scale)}"
                 info_dict = {
                     "scale": scale_str,
-                    "x_min": x_min_utm,
-                    "y_min": y_min_utm,
-                    "x_max": x_max_utm,
-                    "y_max": y_max_utm
+                    "x_min": int(x_min_utm),
+                    "y_min": int(y_min_utm),
+                    "x_max": int(x_max_utm),
+                    "y_max": int(y_max_utm)
                 }
                 info_per_map_frame.append(info_dict)
                 
@@ -310,7 +318,7 @@ class ExportLayoutTool(object):
         messages.addMessage(f"{username}")
         current_date = datetime.now().strftime("%d-%m-%y")
         messages.addMessage(f"{current_date}")
-        unique_id = commit_to_the_db(export_name, username, current_date, export_subfolder, paper_size, info_per_map_frame)
+        unique_id = commit_to_the_db(export_name, username, current_date, export_subfolder, paper_size, info_per_map_frame, description)
         messages.addMessage(f"Export ID: {unique_id}")
         # Update text element with export ID
         text_elements = layout.listElements("TEXT_ELEMENT")
@@ -335,7 +343,7 @@ class ExportLayoutTool(object):
         aprx_copy = os.path.join(export_subfolder, f"{export_name}.aprx")
         aprx.saveACopy(aprx_copy)
         messages.addMessage(f"Saved project copy as: {aprx_copy}")
-        open_after_export = bool(parameters[7].value)
+        open_after_export = bool(parameters[8].value)
         if open_after_export:
             try:
                 os.startfile(export_file)
