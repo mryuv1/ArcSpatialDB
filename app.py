@@ -6,6 +6,12 @@ from datetime import datetime
 import shutil
 
 app = Flask(__name__)
+DATABASE = 'elements.db'
+UPLOAD_FOLDER = 'sampleDataset'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE)
 
 # Custom filter for datetime formatting
 @app.template_filter('datetime')
@@ -308,14 +314,17 @@ def index():
                         results = [row._mapping for row in conn.execute(sel)]
 
                         # Post-process to ensure only relevant scales are added from the original project_scales dict
+                        processed_results = []
                         for res in results:
-                            uuid = res['uuid']
+                            res_dict = dict(res)  # Convert RowMapping to dict
+                            uuid = res_dict['uuid']
                             if uuid in project_scales:
-                                # Format scales nicely
                                 scales = sorted(list(project_scales[uuid]))
-                                res['associated_scales'] = ', '.join(map(str, scales)) if scales else None
+                                res_dict['associated_scales'] = ', '.join(map(str, scales)) if scales else None
                             else:
-                                res['associated_scales'] = None
+                                res_dict['associated_scales'] = None
+                            processed_results.append(res_dict)
+                        results = processed_results
                 else:
                     # Standard filtering - we need to group by project to get all scales per project
                     sel = select(

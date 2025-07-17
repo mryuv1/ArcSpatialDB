@@ -280,6 +280,7 @@ class ExportLayoutTool(object):
                 extent = mf.camera.getExtent()
                 spatial_ref = extent.spatialReference  # original CRS
                 messages.addMessage(f"Map Frame '{mf.name}', spatial_ref: {spatial_ref}")
+                messages.addMessage(f"Map Frame '{mf.name}', X/Y original: {extent.XMin}, {extent.YMin}")
                 # Convert corners to UTM
                 x_min_utm, y_min_utm, utm_epsg = convert_any_to_wgs84_utm(extent.XMin, extent.YMin, spatial_ref)
                 x_max_utm, y_max_utm, _ = convert_any_to_wgs84_utm(extent.XMax, extent.YMax, spatial_ref)

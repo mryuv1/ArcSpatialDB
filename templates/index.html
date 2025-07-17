@@ -799,7 +799,7 @@
 				  <td>{{ proj.get('associated_scales', 'N/A') }}</td>
                   <td class="actions-column">
                     <!-- DEBUG: {{ proj.uuid }} -->
-                    {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}<form method="post" action="{{ url_for('delete_project', uuid=proj.uuid|e) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this project?');"><button type="submit">Delete</button></form></td>
+                    {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}<form method="post" action="{{ url_for('delete_project', uuid=proj.uuid|e) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this project?');"><button type="submit">Delete</button></form></td>
                 </tr>
                 {% endif %}
               {% endfor %}
@@ -828,7 +828,7 @@
                   </th>
                   <th>File Location <br> <input type="text" name="projects_file_location_filter" class="filter-input" value="{{ projects_filters.file_location_filter }}" placeholder="Filter Location"></th>
                   <th>Paper Size <br> <input type="text" name="projects_paper_size_filter" class="filter-input" value="{{ projects_filters.paper_size_filter }}" placeholder="Filter Size"></th>
-                  <th>Associated Scales <br> <input type="text" name="projects_associated_scales_filter" class="filter-input" value="{{ projects_filters.associated_scales_filter }}" placeholder="Filter Scales"></th> <th>Actions</th>
+                  <th>Associated Scales <br> <input type="text" name="projects_associated_scales_filter" class="filter-input" value="{{ projects_filters.associated_scales_filter }}" placeholder="Filter Scales"></th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -845,7 +845,7 @@
 					<td>{{ proj.get('associated_scales', 'N/A') }}</td> 
                     <td class="actions-column">
                       <!-- DEBUG: {{ proj.uuid }} -->
-                      {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}</td>
+                      {% if proj.view_file_path %}{% if proj.file_count == 1 %}<a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a><a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% else %}<a href="#" onclick="showAllFilesModal('{{ proj.uuid }}'); return false" data-files='{{ proj.all_files|tojson|safe }}'>View ({{ proj.file_count }})</a><a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}{% else %}<a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>{% endif %}</td>
                   </tr>
                   {% endif %}
                 {% endfor %}
@@ -915,13 +915,13 @@
                     {% if area.project_view_file_path %}
                       {% if area.project_file_count == 1 %}
                         <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=area.project_view_file_path) }}','{{ area.project_view_file_type }}'); return false">View Project</a>
-                        <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                        <a href="#" onclick="copyPath('{{ area.project_file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
                       {% else %}
                         <a href="#" onclick="showAllFilesModal('{{ area.project_id }}'); return false" data-files='{{ area.project_all_files|tojson|safe }}'>View Project ({{ area.project_file_count }})</a>
-                        <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                        <a href="#" onclick="copyPath('{{ area.project_file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
                       {% endif %}
                     {% else %}
-                      <a href="#" onclick="copyPath('{{ area.project_file_location|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                      <a href="#" onclick="copyPath('{{ area.project_file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
                     {% endif %}
                   </td>
                 </tr>
