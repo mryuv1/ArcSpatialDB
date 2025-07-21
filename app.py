@@ -5,6 +5,8 @@ import glob2
 from datetime import datetime
 import shutil
 
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 app = Flask(__name__)
 DATABASE = 'elements.db'
 UPLOAD_FOLDER = 'sampleDataset'
@@ -80,14 +82,7 @@ def index():
         # Parse spatial box
         bottom_left = request.form.get('bottom_left', '').strip()
         top_right = request.form.get('top_right', '').strip()
-        relative_size_enabled = request.form.get('relative_size') == '1'
-        size_percentage = request.form.get('size_percentage', '10').strip()
-
-        # New spatial relationship options
-        inside_enabled = request.form.get('inside') == '1'
-        outside_enabled = request.form.get('outside') == '1'
-        percentage_overlap_enabled = request.form.get('percentage_overlap') == '1'
-        overlap_percentage = request.form.get('overlap_percentage', '50').strip()
+        # Removed: relative_size_enabled, size_percentage, inside_enabled, outside_enabled, percentage_overlap_enabled, overlap_percentage
 
         if bottom_left and top_right:
             bl = parse_point(bottom_left)
@@ -101,81 +96,14 @@ def index():
                     error = 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'
                 else:
                     join_areas = True
-
-                    # Build spatial filters based on selected options
-                    spatial_filters = []
-
-                    if relative_size_enabled:
-                        try:
-                            percentage = float(size_percentage)
-                            if percentage < 0 or percentage > 1000:
-                                error = 'Percentage must be between 0 and 1000.'
-                            else:
-                                # Calculate the reference area size
-                                reference_area_size = calculate_area_size(xmin, ymin, xmax, ymax)
-
-                                # Calculate the size range (±percentage)
-                                min_size = reference_area_size * (1 - percentage / 100)
-                                max_size = reference_area_size * (1 + percentage / 100)
-
-                                # Add size comparison filter using calculated area
-                                area_size_expr = (areas_table.c.xmax - areas_table.c.xmin) * (areas_table.c.ymax - areas_table.c.ymin)
-                                size_filters = [
-                                    area_size_expr >= min_size,
-                                    area_size_expr <= max_size
-                                ]
-                                spatial_filters.append(and_(*size_filters))
-                        except ValueError:
-                            error = 'Percentage must be a valid number.'
-                    # Add spatial relationship filters
-                    if inside_enabled:
-                        # Inside: area is completely within the query rectangle
-                        inside_filters = [
-                            areas_table.c.xmin >= xmin,
-                            areas_table.c.xmax <= xmax,
-                            areas_table.c.ymin >= ymin,
-                            areas_table.c.ymax <= ymax
-                        ]
-                        spatial_filters.append(and_(*inside_filters))
-
-                    if outside_enabled:
-                        # Outside: area is completely outside the query rectangle
-                        outside_filters = [
-                            or_(
-                                areas_table.c.xmax < xmin,
-                                areas_table.c.xmin > xmax,
-                                areas_table.c.ymax < ymin,
-                                areas_table.c.ymin > ymax
-                            )
-                        ]
-                        spatial_filters.append(or_(*outside_filters))
-
-                    if percentage_overlap_enabled:
-                        try:
-                            overlap_percentage_val = float(overlap_percentage)
-                            if overlap_percentage_val < 0 or overlap_percentage_val > 100:
-                                error = 'Overlap percentage must be between 0 and 100.'
-                            else:
-                                # For percentage overlap, we'll filter after the query
-                                # Store the parameters for post-processing
-                                spatial_filters.append(text("1=1"))  # Include all areas for percentage calculation
-                        except ValueError:
-                            error = 'Overlap percentage must be a valid number.'
-
-                    # If no specific spatial relationship is selected, use standard overlap
-                    if not (relative_size_enabled or inside_enabled or outside_enabled or percentage_overlap_enabled):
-                        # Standard spatial overlap
-                        overlap_filters = [
-                            areas_table.c.xmin < xmax,
-                            areas_table.c.xmax > xmin,
-                            areas_table.c.ymin < ymax,
-                            areas_table.c.ymax > ymin
-                        ]
-                        spatial_filters.append(and_(*overlap_filters))
-
-                    # Combine all spatial filters with OR operator
-                    if spatial_filters:
-                        filters.append(or_(*spatial_filters))
+                    # Only use the default INSIDE spatial filter
+                    inside_filters = [
+                        areas_table.c.xmin >= xmin,
+                        areas_table.c.xmax <= xmax,
+                        areas_table.c.ymin >= ymin,
+                        areas_table.c.ymax <= ymax
+                    ]
+                    filters.append(and_(*inside_filters))
         # Parse other filters
         uuid = request.form.get('uuid', '').strip()
         if uuid:
@@ -245,86 +173,74 @@ def index():
                 else:
                     error = 'Invalid date format for "To Date". Use DD/MM/YYYY format.'
 
+        # Parse intersection range filter
+        intersection_range_enabled = request.form.get('relative_size') == '1'
+        intersection_range_from = request.form.get('relative_size_from', '').strip()
+        intersection_range_to = request.form.get('relative_size_to', '').strip()
+
+        # Validation: if intersection range is enabled, both values must be provided and valid
+        if intersection_range_enabled:
+            if not intersection_range_from or not intersection_range_to:
+                error = 'Please enter both "From" and "To" values for Intersection Range.'
+            else:
+                try:
+                    float(intersection_range_from)
+                    float(intersection_range_to)
+                except ValueError:
+                    error = 'Intersection range values must be valid numbers.'
+
         if error is None:
             with engine.connect() as conn:
                 # Always join areas to retrieve scales if we're going to display them
                 # For search results, we want to show all scales for a project if multiple exist
                 join_stmt = projects_table.join(areas_table, projects_table.c.uuid == areas_table.c.project_id, isouter=True)
 
-                if percentage_overlap_enabled:
-                    # Get all areas and projects first, then filter by percentage
-                    sel = select(projects_table.c, areas_table.c).select_from(join_stmt)
-                    if filters:
-                        # Apply filters that are not related to percentage overlap
-                        sel = sel.where(and_(*[f for f in filters if f != text("1=1")])) # Exclude the dummy filter
-                    all_results = conn.execute(sel).fetchall()
+                # Remove all references to relative_size, inside, outside, percentage_overlap, and their post-processing
+                # The percentage_overlap_enabled and overlap_percentage logic is removed.
+                # The default spatial filter is now always INSIDE.
 
-                    # Filter by percentage overlap
-                    filtered_project_uuids = set()
-                    project_scales = {} # To store unique scales for each project
-                    for row in all_results:
-                        project_data = {col: getattr(row, col) for col in projects_table.c.keys()}
-                        area_data = {col: getattr(row, col) for col in areas_table.c.keys()}
+                # Combine all spatial filters with OR operator
+                if filters:
+                    results = conn.execute(select(*projects_table.c, *areas_table.c).select_from(join_stmt).where(and_(*filters))).fetchall()
 
-                        # Only calculate overlap if area data exists
-                        if area_data['xmin'] is not None and area_data['ymin'] is not None and \
-                           area_data['xmax'] is not None and area_data['ymax'] is not None:
-                            overlap_pct = calculate_overlap_percentage(
-                                area_data['xmin'], area_data['ymin'], area_data['xmax'], area_data['ymax'],
-                                xmin, ymin, xmax, ymax
-                            )
-
-                            if overlap_pct >= float(overlap_percentage):
-                                filtered_project_uuids.add(project_data['uuid'])
-                                if project_data['uuid'] not in project_scales:
-                                    project_scales[project_data['uuid']] = set()
-                                if area_data['scale'] is not None:
-                                    project_scales[project_data['uuid']].add(area_data['scale'])
-                        else: # Include project if it has no associated areas and no spatial filter applies
-                            if not (bottom_left and top_right): # If no spatial filter, include projects without areas
-                                filtered_project_uuids.add(project_data['uuid'])
-                                if project_data['uuid'] not in project_scales:
-                                    project_scales[project_data['uuid']] = set()
-
+                    # Apply intersection range filter if enabled
+                    if intersection_range_enabled and bottom_left and top_right and intersection_range_from and intersection_range_to:
+                        try:
+                            intersection_from = float(intersection_range_from)
+                            intersection_to = float(intersection_range_to)
+                            required_area = calculate_area_size(xmin, ymin, xmax, ymax)
+                            filtered_results = []
+                            for res in results:
+                                res_dict = dict(res)
+                                # Only filter if area coordinates are present
+                                if all(res_dict.get(k) is not None for k in ['xmin', 'ymin', 'xmax', 'ymax']):
+                                    # Calculate intersection area
+                                    intersect_xmin = max(res_dict['xmin'], xmin)
+                                    intersect_ymin = max(res_dict['ymin'], ymin)
+                                    intersect_xmax = min(res_dict['xmax'], xmax)
+                                    intersect_ymax = min(res_dict['ymax'], ymax)
+                                    if intersect_xmin < intersect_xmax and intersect_ymin < intersect_ymax:
+                                        intersection_area = (intersect_xmax - intersect_xmin) * (intersect_ymax - intersect_ymin)
+                                        intersection_pct = (intersection_area / required_area) * 100 if required_area > 0 else 0
+                                        if intersection_from <= intersection_pct <= intersection_to:
+                                            filtered_results.append(res_dict)
+                                else:
+                                    # If area coordinates are missing, skip filtering
+                                    filtered_results.append(res_dict)
+                            results = filtered_results
+                        except ValueError:
+                            error = 'Intersection range values must be valid numbers.'
 
                     # Get the filtered projects and their associated scales
-                    results = []
-                    if filtered_project_uuids:
-                        # Select distinct projects and group their scales
-                        sel = select(
-                            projects_table.c.uuid,
-                            projects_table.c.project_name,
-                            projects_table.c.user_name,
-                            projects_table.c.date,
-                            projects_table.c.file_location,
-                            projects_table.c.paper_size,
-                            projects_table.c.description,  # <-- Added
-                            func.group_concat(distinct(areas_table.c.scale)).label('associated_scales')
-                        ).select_from(join_stmt).where(
-                            projects_table.c.uuid.in_(list(filtered_project_uuids))
-                        ).group_by(
-                            projects_table.c.uuid,
-                            projects_table.c.project_name,
-                            projects_table.c.user_name,
-                            projects_table.c.date,
-                            projects_table.c.file_location,
-                            projects_table.c.paper_size,
-                            projects_table.c.description  # <-- Added
-                        )
-                        results = [row._mapping for row in conn.execute(sel)]
-
-                        # Post-process to ensure only relevant scales are added from the original project_scales dict
-                        processed_results = []
-                        for res in results:
-                            res_dict = dict(res)  # Convert RowMapping to dict
-                            uuid = res_dict['uuid']
-                            if uuid in project_scales:
-                                scales = sorted(list(project_scales[uuid]))
-                                res_dict['associated_scales'] = ', '.join(map(str, scales)) if scales else None
-                            else:
-                                res_dict['associated_scales'] = None
-                            processed_results.append(res_dict)
-                        results = processed_results
+                    processed_results = []
+                    for res in results:
+                        res_dict = dict(res)  # Convert RowMapping to dict
+                        uuid = res_dict['uuid']
+                        # The project_scales logic is removed as percentage overlap is gone.
+                        # If you want to show associated_scales, use the value from the query or set to None.
+                        res_dict['associated_scales'] = res_dict.get('associated_scales', None)
+                        processed_results.append(res_dict)
+                    results = processed_results
                 else:
                     # Standard filtering - we need to group by project to get all scales per project
                     sel = select(
@@ -387,7 +303,7 @@ def index():
                 proj['file_count'] = len(all_files)
 
                 if most_recent:
-                    proj['view_file_path'] = most_recent['path']
+                    proj['view_file_path'] = os.path.relpath(most_recent['path'], PROJECT_ROOT)
                     proj['view_file_type'] = most_recent['type']
                 else:
                     proj['view_file_path'] = None
@@ -595,7 +511,7 @@ def index():
             proj_dict['file_count'] = len(all_files)
 
             if most_recent:
-                proj_dict['view_file_path'] = most_recent['path']
+                proj_dict['view_file_path'] = os.path.relpath(most_recent['path'], PROJECT_ROOT)
                 proj_dict['view_file_type'] = most_recent['type']
             else:
                 proj_dict['view_file_path'] = None
@@ -695,9 +611,12 @@ def index():
 @app.route('/view_file/<path:rel_path>')
 def view_file(rel_path):
     import os
-    abs_path = os.path.abspath(rel_path)
+    abs_path = os.path.abspath(os.path.join(PROJECT_ROOT, rel_path))
+    print(f"Requested: {abs_path}")
+    print(f"Project root: {PROJECT_ROOT}")
+    print(f"Startswith: {abs_path.startswith(PROJECT_ROOT)}")
     # Security: Only allow files inside your project directory
-    if not abs_path.startswith(os.path.abspath('.')):
+    if not abs_path.startswith(PROJECT_ROOT):
         return "Access denied", 403
     return send_file(abs_path)
 

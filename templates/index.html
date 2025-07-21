@@ -468,15 +468,14 @@
     <form method="post" id="searchForm">
       <label>Bottom Left (XMin/YMin): <input name="bottom_left" type="text" placeholder="e.g., 10.5/20.1" value="{{ request.form.bottom_left if request.form.bottom_left else '' }}"></label>
       <label>Top Right (XMax/YMax): <input name="top_right" type="text" placeholder="e.g., 30.0/40.8" value="{{ request.form.top_right if request.form.top_right else '' }}"></label>
-      <div id="spatial_options_fields">
-        <label><input name="relative_size" type="checkbox" value="1" {% if request.form.relative_size %}checked{% endif %} onchange="toggleRelativeSize()"> Relative Size</label>
-        <label><input name="inside" type="checkbox" value="1" {% if request.form.inside %}checked{% endif %}> Inside</label>
-        <label><input name="outside" type="checkbox" value="1" {% if request.form.outside %}checked{% endif %}> Outside</label>
-        <label><input name="percentage_overlap" type="checkbox" value="1" {% if request.form.percentage_overlap %}checked{% endif %} onchange="togglePercentageOverlap()"> Percentage Overlap</label>
-      </div>
-      <div id="percentage_inputs_fields">
-        <label class="percentage-input">Size Percentage (±): <input name="size_percentage" type="number" min="0" max="1000" step="0.1" placeholder="e.g., 10" value="{{ request.form.size_percentage if request.form.size_percentage else '10' }}">%</label>
-        <label class="overlap-percentage-input">Overlap Percentage (%): <input name="overlap_percentage" type="number" min="0" max="100" step="0.1" placeholder="e.g., 50" value="{{ request.form.overlap_percentage if request.form.overlap_percentage else '50' }}">%</label>
+      <div id="relative_size_row" class="full-width-row">
+        <label style="display: flex; align-items: center; gap: 10px;">
+          <input name="relative_size" id="relative_size_checkbox" type="checkbox" value="1" {% if request.form.relative_size %}checked{% endif %} onchange="toggleRelativeSize()"> Intersection Range
+        </label>
+        <div id="relative_size_percentages" style="display: none; gap: 10px; align-items: center; margin-left: 20px;">
+          <label style="margin-bottom:0;">From: <input name="relative_size_from" type="number" min="0" max="1000" step="0.1" placeholder="e.g., 10" value="{{ request.form.relative_size_from if request.form.relative_size_from else '' }}">%</label>
+          <label style="margin-bottom:0; margin-left: 10px;">To: <input name="relative_size_to" type="number" min="0" max="1000" step="0.1" placeholder="e.g., 20" value="{{ request.form.relative_size_to if request.form.relative_size_to else '' }}">%</label>
+        </div>
       </div>
       <label class="full-width-field">Project UUID: <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef" value="{{ request.form.uuid if request.form.uuid else '' }}"></label>
       <div id="user_name_fields" style="grid-column: 1 / -1;">
@@ -564,24 +563,14 @@
     }
 
     function toggleRelativeSize() {
-      var relativeSizeCheckbox = document.querySelector('input[name="relative_size"]');
-      var percentageInput = document.querySelector('.percentage-input');
-      
-      if (relativeSizeCheckbox.checked) {
-        percentageInput.style.display = 'flex';
-      } else {
-        percentageInput.style.display = 'none';
-      }
-    }
-
-    function togglePercentageOverlap() {
-      var percentageOverlapCheckbox = document.querySelector('input[name="percentage_overlap"]');
-      var overlapPercentageInput = document.querySelector('.overlap-percentage-input');
-      
-      if (percentageOverlapCheckbox.checked) {
-        overlapPercentageInput.style.display = 'flex';
-      } else {
-        overlapPercentageInput.style.display = 'none';
+      var checkbox = document.getElementById('relative_size_checkbox');
+      var percentDiv = document.getElementById('relative_size_percentages');
+      if (checkbox && percentDiv) {
+        if (checkbox.checked) {
+          percentDiv.style.display = 'flex';
+        } else {
+          percentDiv.style.display = 'none';
+        }
       }
     }
 
@@ -591,10 +580,8 @@
       
       // Hide custom size fields
       document.getElementById('custom_size_fields').style.display = 'none';
-      
-      // Hide percentage inputs
-      document.querySelector('.percentage-input').style.display = 'none';
-      document.querySelector('.overlap-percentage-input').style.display = 'none';
+      // Hide relative size percentages
+      document.getElementById('relative_size_percentages').style.display = 'none';
       
       // Clear any additional user name dropdowns (keep only the first one)
       var userNamesDiv = document.getElementById('user_name_fields');
@@ -771,10 +758,7 @@
 
       // Initialize custom size fields state
       toggleCustomSize();
-      
-      // Initialize percentage input fields state
-      toggleRelativeSize();
-      togglePercentageOverlap();
+      toggleRelativeSize(); // Initialize relative size fields
     }
     </script>
     {% if error %}
@@ -798,7 +782,11 @@
                   <td>{{ proj.description }}</td>
                   <td>{{ proj.get('associated_scales', 'N/A') }}</td>
                   <td class="actions-column">
-                    <a href="#" onclick="showFileModalOrNoFiles({{ proj.all_files|tojson|safe }}); return false">View</a>
+                    {% if proj.view_file_path %}
+                      <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                    {% else %}
+                      <span>No file</span>
+                    {% endif %}
                     <a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
                     <form method="post" action="{{ url_for('delete_project', uuid=proj.uuid|e) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this project?');"><button type="submit">Delete</button></form>
                   </td>
@@ -848,8 +836,11 @@
                     <td>{{ proj.description }}</td>
 				<td>{{ proj.get('associated_scales', 'N/A') }}</td> 
                     <td class="actions-column">
-                      <!-- DEBUG: {{ proj.uuid }} -->
-                      <a href="#" onclick="showFileModalOrNoFiles({{ proj.all_files|tojson|safe }}); return false">View</a>
+                      {% if proj.view_file_path %}
+                        <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
+                      {% else %}
+                        <span>No file</span>
+                      {% endif %}
                       <a href="#" onclick="copyPath('{{ proj.file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Path</a>
                     </td>
                   </tr>
@@ -920,6 +911,8 @@
                   <td class="actions-column">
                     <a href="#" onclick="showFileModalOrNoFiles({{ area.project_all_files|tojson|safe }}); return false">View Project</a>
                     <a href="#" onclick="copyPath('{{ area.project_file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
+                    <button type="button" onclick="copyTopRight('{{ area.xmax }}', '{{ area.ymax }}')">Copy Top Right</button>
+                    <button type="button" onclick="copyBottomLeft('{{ area.xmin }}', '{{ area.ymin }}')">Copy Bottom Left</button>
                   </td>
                 </tr>
                 {% endfor %}
@@ -997,6 +990,7 @@
 
     <script>
     function showFileModal(url, type) {
+      console.log('[DEBUG] showFileModal called with url:', url, 'type:', type);
       var modal = document.getElementById('fileModal');
       var body = document.getElementById('fileModalBody');
       if (type === 'pdf') {
@@ -1107,6 +1101,7 @@
     });
 
     function showFileModalOrNoFiles(files) {
+      console.log('[DEBUG] showFileModalOrNoFiles called with files:', files);
       if (!files || files.length === 0) {
         var modal = document.getElementById('fileModal');
         var body = document.getElementById('fileModalBody');
@@ -1115,6 +1110,7 @@
       } else if (files.length === 1) {
         var file = files[0];
         var url = '/view_file/' + encodeURIComponent(file.rel_path);
+        console.log('[DEBUG] Single file, url:', url, 'type:', file.type);
         showFileModal(url, file.type);
       } else {
         // Multiple files: open gallery
@@ -1126,6 +1122,38 @@
         modal.style.display = 'flex';
         displayCurrentFile();
       }
+    }
+
+    function copyTopRight(xmax, ymax) {
+      var str = xmax + '/' + ymax;
+      var textarea = document.createElement('textarea');
+      textarea.value = str;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showCopyNotification('Top Right copied: ' + str);
+    }
+    function copyBottomLeft(xmin, ymin) {
+      var str = xmin + '/' + ymin;
+      var textarea = document.createElement('textarea');
+      textarea.value = str;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showCopyNotification('Bottom Left copied: ' + str);
+    }
+    function showCopyNotification(msg) {
+      var notification = document.createElement('div');
+      notification.textContent = msg;
+      notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #27ae60; color: white; padding: 10px 15px; border-radius: 5px; z-index: 10000; font-size: 14px;';
+      document.body.appendChild(notification);
+      setTimeout(function() {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 2000);
     }
     </script>
     
