@@ -2,6 +2,7 @@ import arcpy
 import uuid
 import os
 import getpass
+import requests
 from datetime import datetime
 from sqlalchemy import create_engine, Column, String, Float, Integer, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -52,36 +53,91 @@ def detect_paper_size(width_mm, height_mm, tolerance=2):
     return f"Custom Size: Height: {height_mm / 1000} cm, Width: {width_mm / 1000} cm"
 
 def commit_to_the_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description):
+    # Try to get API URL from config file, fallback to default
+    try:
+        from config import API_BASE_URL, API_TIMEOUT
+    except ImportError:
+        API_BASE_URL = "http://your-vm-domain.com"  # Replace with your actual VM URL
+        API_TIMEOUT = 30
+    
+    api_url = f"{API_BASE_URL}/api/add_project"
+    
+    # Generate unique ID
+    unique_id = str(uuid.uuid4())[:8]
+    
+    # Prepare areas data for API
+    areas_data = []
+    for info in info_per_map_frame:
+        area_data = {
+            'xmin': info['x_min'],
+            'ymin': info['y_min'],
+            'xmax': info['x_max'],
+            'ymax': info['y_max'],
+            'scale': info['scale']
+        }
+        areas_data.append(area_data)
+    
+    # Prepare payload for API request
+    payload = {
+        "uuid": unique_id,
+        "project_name": project_name,
+        "user_name": user_name,
+        "date": date,
+        "file_location": file_location,
+        "paper_size": paper_size,
+        "description": description,
+        "areas": areas_data
+    }
+    
+    try:
+        # Send POST request to API
+        response = requests.post(api_url, json=payload, timeout=API_TIMEOUT)
+        
+        if response.status_code == 201:
+            print(f"✅ Project added successfully via API! UUID: {unique_id}")
+            return unique_id
+        else:
+            error_msg = f"❌ API Error: {response.status_code} – {response.json().get('error', 'Unknown error')}"
+            print(error_msg)
+            # Fallback to local database if API fails
+            print("🔄 Falling back to local database...")
+            return commit_to_local_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description, unique_id)
+            
+    except requests.exceptions.RequestException as e:
+        print(f"❌ API request failed: {e}")
+        print("🔄 Falling back to local database...")
+        return commit_to_local_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description, unique_id)
+
+def commit_to_local_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description, unique_id):
+    """Fallback function to commit to local database if API is unavailable"""
     DATABASE_URL = f'sqlite:///{DB_PATH}'
     engine = create_engine(DATABASE_URL, echo=True)
     Session = sessionmaker(bind=engine)
     session = Session()
     Base.metadata.create_all(engine)
-    # Generate unique ID
-    unique_id = str(uuid.uuid4())[:8]
-    while session.query(Project).filter(Project.uuid == unique_id).first():
-        unique_id = str(uuid.uuid4())[:8]
+    
     project = Project(
-    uuid=unique_id,
-    project_name=project_name,
-    description=description,
-    user_name=user_name,
-    date=date,
-    file_location=file_location,
-    paper_size=paper_size,
+        uuid=unique_id,
+        project_name=project_name,
+        description=description,
+        user_name=user_name,
+        date=date,
+        file_location=file_location,
+        paper_size=paper_size,
     )
     for info in info_per_map_frame:
         area = Area(
-        xmin=info['x_min'],
-        ymin=info['y_min'],
-        xmax=info['x_max'],
-        ymax=info['y_max'],
-        scale=info['scale']
+            xmin=info['x_min'],
+            ymin=info['y_min'],
+            xmax=info['x_max'],
+            ymax=info['y_max'],
+            scale=info['scale']
         )
         project.areas.append(area)
     session.add(project)
     session.commit()
     session.close()
+    print(f"✅ Project saved to local database. UUID: {unique_id}")
     return unique_id
     
 def convert_any_to_wgs84_utm(x, y, spatial_ref=None):

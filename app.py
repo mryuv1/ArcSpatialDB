@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, url_for, send_file, redirect
+from flask import Flask, render_template, request, url_for, send_file, redirect, jsonify
 from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_
 import os
 import glob2
@@ -65,6 +65,80 @@ def calculate_overlap_percentage(area_xmin, area_ymin, area_xmax, area_ymax, que
         return 0.0
 
     return (intersect_size / area_size) * 100.0
+
+@app.route('/api/add_project', methods=['POST'])
+def api_add_project():
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "No JSON data provided"}), 400
+    
+    required_fields = ['uuid', 'project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
+    missing_fields = [f for f in required_fields if f not in data]
+    
+    if missing_fields:
+        return jsonify({"error": f"Missing fields: {', '.join(missing_fields)}"}), 400
+    
+    try:
+        with engine.begin() as conn:
+            # Insert project
+            conn.execute(projects_table.insert().values(
+                uuid=data['uuid'],
+                project_name=data['project_name'],
+                user_name=data['user_name'],
+                date=data['date'],
+                file_location=data['file_location'],
+                paper_size=data['paper_size'],
+                description=data['description']
+            ))
+            
+            # Insert areas if provided
+            if 'areas' in data and isinstance(data['areas'], list):
+                for area_data in data['areas']:
+                    area_required_fields = ['xmin', 'ymin', 'xmax', 'ymax', 'scale']
+                    area_missing_fields = [f for f in area_required_fields if f not in area_data]
+                    
+                    if area_missing_fields:
+                        return jsonify({"error": f"Missing area fields: {', '.join(area_missing_fields)}"}), 400
+                    
+                    conn.execute(areas_table.insert().values(
+                        project_id=data['uuid'],
+                        xmin=area_data['xmin'],
+                        ymin=area_data['ymin'],
+                        xmax=area_data['xmax'],
+                        ymax=area_data['ymax'],
+                        scale=area_data['scale']
+                    ))
+        
+        return jsonify({"message": "Project added successfully", "uuid": data['uuid']}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/get_project/<uuid>', methods=['GET'])
+def api_get_project(uuid):
+    try:
+        with engine.connect() as conn:
+            # Get project details
+            project_result = conn.execute(
+                select(projects_table).where(projects_table.c.uuid == uuid)
+            ).first()
+            
+            if not project_result:
+                return jsonify({"error": "Project not found"}), 404
+            
+            project_dict = dict(project_result._mapping)
+            
+            # Get associated areas
+            areas_result = conn.execute(
+                select(areas_table).where(areas_table.c.project_id == uuid)
+            ).fetchall()
+            
+            areas_list = [dict(area._mapping) for area in areas_result]
+            project_dict['areas'] = areas_list
+            
+            return jsonify(project_dict), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -648,4 +722,9 @@ def delete_project(uuid):
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    try:
+        from config import FLASK_HOST, FLASK_PORT, FLASK_DEBUG
+        app.run(host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG)
+    except ImportError:
+        # Fallback if config file doesn't exist
+        app.run(host='0.0.0.0', port=5000, debug=False)
