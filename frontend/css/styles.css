@@ -440,7 +440,7 @@ hr {
     display: inline-block;
     margin: 2px 0;
     padding: 4px 8px;
-    background-color: #e74c3c;
+    background-color: #3498db;
     color: white;
     text-decoration: none;
     border-radius: 3px;
@@ -453,7 +453,19 @@ hr {
 
 .actions-column button[type="submit"]:hover,
 .actions-column button[type="button"]:hover {
-    background-color: #c0392b;
+    background-color: #2980b9;
+}
+
+/* Ensure copy buttons are blue - more specific rule */
+.actions-column button[onclick*="copyTopRight"],
+.actions-column button[onclick*="copyBottomLeft"] {
+    background-color: #3498db !important;
+    color: white !important;
+}
+
+.actions-column button[onclick*="copyTopRight"]:hover,
+.actions-column button[onclick*="copyBottomLeft"]:hover {
+    background-color: #2980b9 !important;
 }
 
 /* Modal Styles */

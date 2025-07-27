@@ -457,8 +457,8 @@ class ArcSpatialDBClient {
                     <td class="actions-column">
                         <a href="#" onclick="app.showFileModalOrNoFiles(${JSON.stringify(area.project_all_files).replace(/"/g, '&quot;')}); return false">View Project</a>
                         <a href="#" onclick="app.copyPath('${this.escapeHtml(area.project_file_location)}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
-                        <button type="button" onclick="app.copyTopRight('${area.xmax}', '${area.ymax}')">Copy Top Right</button>
                         <button type="button" onclick="app.copyBottomLeft('${area.xmin}', '${area.ymin}')">Copy Bottom Left</button>
+                        <button type="button" onclick="app.copyTopRight('${area.xmax}', '${area.ymax}')">Copy Top Right</button>
                     </td>
                 </tr>
             `;
