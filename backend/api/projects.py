@@ -157,25 +157,31 @@ def search_projects():
         top_right = data.get('top_right', '').strip()
         
         if bottom_left and top_right:
-            bl = parse_point(bottom_left)
-            tr = parse_point(top_right)
-            if not bl or not tr:
+            bl_result = parse_point(bottom_left)
+            tr_result = parse_point(top_right)
+            
+            # Check for parsing errors
+            if bl_result[1] is not None:  # Error in bottom_left
+                return jsonify({'error': f'Bottom Left: {bl_result[1]}'}), 400
+            elif tr_result[1] is not None:  # Error in top_right
+                return jsonify({'error': f'Top Right: {tr_result[1]}'}), 400
+            elif not bl_result[0] or not tr_result[0]:  # No coordinates returned
                 return jsonify({'error': 'Invalid input format. Please use X/Y or X,Y for both points.'}), 400
-            
-            xmin, ymin = bl
-            xmax, ymax = tr
-            if xmin >= xmax or ymin >= ymax:
-                return jsonify({'error': 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'}), 400
-            
-            join_areas = True
-            # Default INSIDE spatial filter
-            inside_filters = [
-                areas_table.c.xmin >= xmin,
-                areas_table.c.xmax <= xmax,
-                areas_table.c.ymin >= ymin,
-                areas_table.c.ymax <= ymax
-            ]
-            filters.append(and_(*inside_filters))
+            else:
+                xmin, ymin = bl_result[0]
+                xmax, ymax = tr_result[0]
+                if xmin >= xmax or ymin >= ymax:
+                    return jsonify({'error': 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'}), 400
+                
+                join_areas = True
+                # Default INSIDE spatial filter
+                inside_filters = [
+                    areas_table.c.xmin >= xmin,
+                    areas_table.c.xmax <= xmax,
+                    areas_table.c.ymin >= ymin,
+                    areas_table.c.ymax <= ymax
+                ]
+                filters.append(and_(*inside_filters))
 
         # Parse other filters
         uuid = data.get('uuid', '').strip()
