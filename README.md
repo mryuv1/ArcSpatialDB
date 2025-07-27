@@ -57,3 +57,36 @@ Contributions are welcome! Please feel free to submit a pull request or open an 
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for more details.
+
+## New Frontend-Backend Structure (Post-Split)
+
+After splitting, your project will look like this:
+
+```
+ArcSpatialDB/
+  backend/           # Python Flask API (no HTML rendering)
+    app.py           # Modified to serve only API endpoints
+    requirements.txt # Backend dependencies
+    elements.db      # Database (or symlink/copy)
+    ...
+  frontend/          # HTML/JS frontend (static site)
+    index.html       # Main UI (adapted from templates/index.html)
+    static/          # Static assets (images, CSS, JS)
+      rocket.jpg
+    ...
+```
+
+### How to Run
+
+**Backend:**
+1. `cd backend`
+2. `pip install -r requirements.txt`
+3. `python app.py` (or use `server.py` for production)
+
+**Frontend:**
+1. `cd frontend`
+2. Open `index.html` in your browser (or serve with a static file server for local development)
+
+The frontend will communicate with the backend via HTTP API calls (e.g., `fetch('http://localhost:5000/api/get_project/123')`).
+
+---

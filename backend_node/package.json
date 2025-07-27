@@ -1,0 +1,24 @@
+{
+  "name": "arcspatialdb-backend-node",
+  "version": "1.0.0",
+  "description": "Node.js backend for ArcSpatialDB",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "sqlite3": "^5.1.6",
+    "glob": "^10.3.10",
+    "multer": "^1.4.5-lts.1",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": ["arcspatialdb", "gis", "spatial", "database"],
+  "author": "ArcSpatialDB Team",
+  "license": "MIT"
+}
