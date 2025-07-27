@@ -6,7 +6,7 @@ const router = express.Router();
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 
-router.get('/view_file/*', (req, res) => {
+router.get('/*', (req, res) => {
     try {
         // Get the relative path from the URL
         const relPath = req.params[0];

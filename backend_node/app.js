@@ -12,10 +12,18 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files from frontend directory BEFORE API routes
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
 // API Routes
 app.use('/api', projectsRouter);
 app.use('/api', areasRouter);
-app.use('/', filesRouter);
+app.use('/view_file', filesRouter);
+
+// Serve frontend HTML at root (after API routes so it doesn't interfere)
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

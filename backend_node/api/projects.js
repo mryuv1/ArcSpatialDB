@@ -229,24 +229,108 @@ router.post('/projects/search', async (req, res) => {
     try {
         const searchData = req.body;
         
-        // This endpoint typically returns search results based on criteria
-        // For now, implementing basic search functionality
         let whereConditions = [];
         let params = [];
-        
+        let joinAreas = false;
+
+        // Parse spatial box
+        const bottomLeft = (searchData.bottom_left || '').trim();
+        const topRight = (searchData.top_right || '').trim();
+
+        if (bottomLeft && topRight) {
+            const blResult = parsePoint(bottomLeft);
+            const trResult = parsePoint(topRight);
+            
+            // Check for parsing errors
+            if (blResult[1] !== null) {  // Error in bottom_left
+                return res.status(400).json({ error: `Bottom Left: ${blResult[1]}` });
+            } else if (trResult[1] !== null) {  // Error in top_right
+                return res.status(400).json({ error: `Top Right: ${trResult[1]}` });
+            } else if (!blResult[0] || !trResult[0]) {  // No coordinates returned
+                return res.status(400).json({ error: 'Invalid input format. Please use X/Y or X,Y for both points.' });
+            } else {
+                const [xmin, ymin] = blResult[0];
+                const [xmax, ymax] = trResult[0];
+                if (xmin >= xmax || ymin >= ymax) {
+                    return res.status(400).json({ error: 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.' });
+                }
+                
+                joinAreas = true;
+                // Default INSIDE spatial filter
+                whereConditions.push('a.xmin >= ? AND a.xmax <= ? AND a.ymin >= ? AND a.ymax <= ?');
+                params.push(xmin, xmax, ymin, ymax);
+            }
+        }
+
+        // Handle other search criteria
+        if (searchData.uuid && searchData.uuid.trim()) {
+            whereConditions.push('p.uuid LIKE ?');
+            params.push(`${searchData.uuid.trim()}%`);
+        }
+
         // Handle user names search
         if (searchData.user_names && searchData.user_names.length > 0) {
             const userConditions = searchData.user_names.map(() => 'p.user_name LIKE ?');
             whereConditions.push(`(${userConditions.join(' OR ')})`);
             searchData.user_names.forEach(name => params.push(`${name}%`));
         }
-        
-        // Handle other search criteria if provided
-        if (searchData.project_name) {
-            whereConditions.push('p.project_name LIKE ?');
-            params.push(`%${searchData.project_name}%`);
+
+        // Handle paper size
+        if (searchData.paper_size && searchData.paper_size.trim()) {
+            const paperSize = searchData.paper_size.trim();
+            if (paperSize === 'custom' && searchData.custom_height && searchData.custom_width) {
+                try {
+                    const heightCm = parseFloat(searchData.custom_height);
+                    const widthCm = parseFloat(searchData.custom_width);
+                    const customSizeFormat = `Custom Size: Height: ${heightCm} cm, Width: ${widthCm} cm`;
+                    whereConditions.push('p.paper_size LIKE ?');
+                    params.push(`${customSizeFormat}%`);
+                } catch (e) {
+                    return res.status(400).json({ error: 'Custom height and width must be valid numbers.' });
+                }
+            } else if (paperSize !== 'custom') {
+                whereConditions.push('p.paper_size LIKE ?');
+                params.push(`${paperSize}%`);
+            } else if (paperSize === 'custom' && (!searchData.custom_height || !searchData.custom_width)) {
+                return res.status(400).json({ error: 'Please enter both height and width for custom size.' });
+            }
         }
-        
+
+        // Handle scale filter
+        if (searchData.scale && searchData.scale.trim()) {
+            try {
+                const scaleVal = parseFloat(searchData.scale.trim());
+                joinAreas = true;
+                whereConditions.push('a.scale = ?');
+                params.push(scaleVal);
+            } catch (e) {
+                return res.status(400).json({ error: 'Scale must be a number.' });
+            }
+        }
+
+        // Handle date range
+        if (searchData.date_from && searchData.date_from.trim()) {
+            const convertedFrom = convertDateToDbFormat(searchData.date_from.trim());
+            if (convertedFrom) {
+                whereConditions.push('p.date >= ?');
+                params.push(convertedFrom);
+            } else {
+                return res.status(400).json({ error: 'Invalid date format for "From Date". Use DD/MM/YYYY format.' });
+            }
+        }
+
+        if (searchData.date_to && searchData.date_to.trim()) {
+            const convertedTo = convertDateToDbFormat(searchData.date_to.trim());
+            if (convertedTo) {
+                whereConditions.push('p.date <= ?');
+                params.push(convertedTo);
+            } else {
+                return res.status(400).json({ error: 'Invalid date format for "To Date". Use DD/MM/YYYY format.' });
+            }
+        }
+
+        // Build the query
+        const joinClause = joinAreas ? 'INNER JOIN areas a ON p.uuid = a.project_id' : 'LEFT JOIN areas a ON p.uuid = a.project_id';
         const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
         
         const query = `
@@ -260,7 +344,7 @@ router.post('/projects/search', async (req, res) => {
                 p.description,
                 GROUP_CONCAT(DISTINCT a.scale) as associated_scales
             FROM projects p
-            LEFT JOIN areas a ON p.uuid = a.project_id
+            ${joinClause}
             ${whereClause}
             GROUP BY p.uuid, p.project_name, p.user_name, p.date, p.file_location, p.paper_size, p.description
             ORDER BY p.project_name
