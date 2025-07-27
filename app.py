@@ -27,17 +27,131 @@ projects_table = Table('projects', metadata, autoload_with=engine)
 areas_table = Table('areas', metadata, autoload_with=engine)
 
 def parse_point(s):
+    """
+    Parse coordinate string with support for various separators and formats.
+    Supports: '/', ',', ':', ';', '|', ' ', '\t', '\\', and combinations
+    Also handles WGS84 format and other coordinate system prefixes
+    Handles complex formats like:
+    - WGS84 UTM 36N 735712 E / 3563829 N
+    - WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N
+    
+    Returns: (x, y) if successful, or (None, error_message) if failed
+    """
     try:
-        s = s.strip()
-        if '/' in s:
-            x_str, y_str = s.split('/')
-        elif ',' in s:
-            x_str, y_str = s.split(',')
-        else:
-            return None
-        return float(x_str), float(y_str)
-    except Exception:
-        return None
+        s = str(s).strip()
+        
+        # Check for empty or whitespace-only input
+        if not s:
+            return None, "Empty coordinate string provided"
+        
+        # Handle complex WGS84 UTM format: "WGS84 UTM 36N 735712 E / 3563829 N"
+        if 'WGS84 UTM' in s.upper():
+            import re
+            # Pattern: WGS84 UTM [zone][N/S] [easting] [E/W] / [northing] [N/S]
+            utm_pattern = r'WGS84\s+UTM\s+(\d+[NS])\s+(\d+)\s*[EW]\s*/\s*(\d+)\s*[NS]'
+            match = re.search(utm_pattern, s, re.IGNORECASE)
+            if match:
+                try:
+                    zone = match.group(1)
+                    easting = float(match.group(2))
+                    northing = float(match.group(3))
+                    return (easting, northing), None
+                except ValueError as e:
+                    return None, f"Invalid UTM coordinates in '{s}': {str(e)}"
+            else:
+                return None, f"Invalid WGS84 UTM format. Expected: 'WGS84 UTM [zone][N/S] [easting] [E/W] / [northing] [N/S]'"
+        
+        # Handle complex WGS84 Geographic format: "WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N"
+        if 'WGS84 GEO' in s.upper():
+            import re
+            # Pattern: WGS84 Geo [deg]° [min]' [sec]" [E/W] / [deg]° [min]' [sec]" [N/S]
+            geo_pattern = r'WGS84\s+GEO\s+(\d+)°\s*(\d+)\'\s*([\d.]+)"\s*[EW]\s*/\s*(\d+)°\s*(\d+)\'\s*([\d.]+)"\s*[NS]'
+            match = re.search(geo_pattern, s, re.IGNORECASE)
+            if match:
+                try:
+                    # Convert DMS to decimal degrees
+                    lon_deg, lon_min, lon_sec = float(match.group(1)), float(match.group(2)), float(match.group(3))
+                    lat_deg, lat_min, lat_sec = float(match.group(4)), float(match.group(5)), float(match.group(6))
+                    
+                    # Check if longitude is East or West
+                    if 'W' in s.upper():
+                        lon_deg = -lon_deg
+                    if 'S' in s.upper():
+                        lat_deg = -lat_deg
+                    
+                    # Convert to decimal degrees
+                    lon_decimal = lon_deg + (lon_min / 60) + (lon_sec / 3600)
+                    lat_decimal = lat_deg + (lat_min / 60) + (lat_sec / 3600)
+                    
+                    return (lon_decimal, lat_decimal), None
+                except ValueError as e:
+                    return None, f"Invalid geographic coordinates in '{s}': {str(e)}"
+            else:
+                return None, f"Invalid WGS84 Geographic format. Expected: 'WGS84 Geo [deg]° [min]' [sec]\" [E/W] / [deg]° [min]' [sec]\" [N/S]'"
+        
+        # Handle simple WGS84 and other coordinate system prefixes
+        if s.upper().startswith(('WGS', 'EPSG', 'UTM', 'GEO', 'PROJ')):
+            # Extract coordinates after the prefix
+            # Look for common patterns like "WGS84: 123.456, 789.012" or "UTM 36N: 123456, 789012"
+            import re
+            # Match coordinates after any prefix
+            coord_match = re.search(r'[:\s]+([-\d.,\s]+)$', s)
+            if coord_match:
+                s = coord_match.group(1).strip()
+            else:
+                return None, f"Invalid coordinate system format. Expected: '[SYSTEM]: [x], [y]' or '[SYSTEM] [x], [y]'"
+        
+        # Remove any parentheses, brackets, or quotes
+        s = s.strip('()[]{}"\'\'')
+        
+        # Try multiple separators in order of preference
+        separators = ['/', ',', ':', ';', '|', '\\', '\t']
+        
+        # First try exact separators
+        for sep in separators:
+            if sep in s:
+                parts = s.split(sep, 1)  # Split only on first occurrence
+                if len(parts) == 2:
+                    x_str, y_str = parts[0].strip(), parts[1].strip()
+                    # Try to convert to float
+                    try:
+                        return (float(x_str), float(y_str)), None
+                    except ValueError:
+                        continue
+        
+        # If no separator found, try splitting on whitespace
+        if ' ' in s:
+            parts = s.split()
+            if len(parts) >= 2:
+                try:
+                    return (float(parts[0]), float(parts[1])), None
+                except ValueError:
+                    pass
+        
+        # Try regex pattern for coordinates with optional spaces and various separators
+        import re
+        # Pattern: number, optional spaces, separator, optional spaces, number
+        coord_pattern = r'([-+]?\d*\.?\d+)\s*[\/,:;|\t\\]\s*([-+]?\d*\.?\d+)'
+        match = re.search(coord_pattern, s)
+        if match:
+            try:
+                return (float(match.group(1)), float(match.group(2))), None
+            except ValueError:
+                pass
+        
+        # Try pattern for coordinates separated by whitespace
+        space_pattern = r'([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)'
+        match = re.search(space_pattern, s)
+        if match:
+            try:
+                return (float(match.group(1)), float(match.group(2))), None
+            except ValueError:
+                pass
+        
+        # If we get here, no valid format was found
+        return None, f"Invalid coordinate format: '{s}'. Expected formats: 'x,y', 'x/y', 'x:y', 'WGS84 UTM 36N 735712 E / 3563829 N', 'WGS84 Geo 35° 30' 0.11\" E / 32° 11' 9.88\" N', etc."
+    except Exception as e:
+        return None, f"Error parsing coordinates '{s}': {str(e)}"
 
 def calculate_area_size(xmin, ymin, xmax, ymax):
     """Calculate the area size in square meters using UTM coordinates"""
@@ -159,13 +273,19 @@ def index():
         # Removed: relative_size_enabled, size_percentage, inside_enabled, outside_enabled, percentage_overlap_enabled, overlap_percentage
 
         if bottom_left and top_right:
-            bl = parse_point(bottom_left)
-            tr = parse_point(top_right)
-            if not bl or not tr:
+            bl_result = parse_point(bottom_left)
+            tr_result = parse_point(top_right)
+            
+            # Check for parsing errors
+            if bl_result[1] is not None:  # Error in bottom_left
+                error = f'Bottom Left: {bl_result[1]}'
+            elif tr_result[1] is not None:  # Error in top_right
+                error = f'Top Right: {tr_result[1]}'
+            elif not bl_result[0] or not tr_result[0]:  # No coordinates returned
                 error = 'Invalid input format. Please use X/Y or X,Y for both points.'
             else:
-                xmin, ymin = bl
-                xmax, ymax = tr
+                xmin, ymin = bl_result[0]
+                xmax, ymax = tr_result[0]
                 if xmin >= xmax or ymin >= ymax:
                     error = 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'
                 else:
@@ -724,7 +844,7 @@ def delete_project(uuid):
 if __name__ == '__main__':
     try:
         from config import FLASK_HOST, FLASK_PORT, FLASK_DEBUG
-        app.run(host=FLASK_HOST, port=5002, debug=FLASK_DEBUG)
+        app.run(host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG)
     except ImportError:
         # Fallback if config file doesn't exist
-        app.run(host='0.0.0.0', port=5002, debug=False)
+        app.run(host='0.0.0.0', port=5000, debug=False)
