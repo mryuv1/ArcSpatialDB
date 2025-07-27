@@ -7,6 +7,19 @@ import shutil
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
+def row_to_dict(row):
+    """
+    Convert SQLAlchemy Row object to dictionary, handling different SQLAlchemy versions
+    """
+    try:
+        if hasattr(row, '_mapping'):
+            return dict(row._mapping)
+        else:
+            return dict(row)
+    except (ValueError, TypeError):
+        # Fallback for SQLAlchemy Row objects
+        return {key: row[key] for key in row.keys()}
+
 app = Flask(__name__)
 DATABASE = 'elements.db'
 UPLOAD_FOLDER = 'sampleDataset'
@@ -240,14 +253,14 @@ def api_get_project(uuid):
             if not project_result:
                 return jsonify({"error": "Project not found"}), 404
             
-            project_dict = dict(project_result._mapping)
+            project_dict = row_to_dict(project_result)
             
             # Get associated areas
             areas_result = conn.execute(
                 select(areas_table).where(areas_table.c.project_id == uuid)
             ).fetchall()
             
-            areas_list = [dict(area._mapping) for area in areas_result]
+            areas_list = [row_to_dict(area) for area in areas_result]
             project_dict['areas'] = areas_list
             
             return jsonify(project_dict), 200
@@ -405,7 +418,7 @@ def index():
                             required_area = calculate_area_size(xmin, ymin, xmax, ymax)
                             filtered_results = []
                             for res in results:
-                                res_dict = dict(res)
+                                res_dict = row_to_dict(res)
                                 # Only filter if area coordinates are present
                                 if all(res_dict.get(k) is not None for k in ['xmin', 'ymin', 'xmax', 'ymax']):
                                     # Calculate intersection area
@@ -428,7 +441,7 @@ def index():
                     # Get the filtered projects and their associated scales
                     processed_results = []
                     for res in results:
-                        res_dict = dict(res)  # Convert RowMapping to dict
+                        res_dict = row_to_dict(res)
                         uuid = res_dict['uuid']
                         # The project_scales logic is removed as percentage overlap is gone.
                         # If you want to show associated_scales, use the value from the query or set to None.
@@ -465,7 +478,7 @@ def index():
             # Add absolute file location for file explorer links
             processed_results = []
             for row in results or []:
-                proj = dict(row)
+                proj = row_to_dict(row)
                 rel_path = proj['file_location']
                 abs_path = os.path.abspath(rel_path)
                 proj['abs_file_location'] = abs_path
@@ -670,7 +683,7 @@ def index():
         # Add file information for projects (same as in search results)
         projects_list = []
         for proj in projects:
-            proj_dict = dict(proj._mapping)  # Convert Row to dict
+            proj_dict = row_to_dict(proj)
             rel_path = proj_dict['file_location']
             abs_path = os.path.abspath(rel_path)
             proj_dict['abs_file_location'] = abs_path
@@ -738,7 +751,7 @@ def index():
         # Add file information for areas (show files of associated project)
         areas_list = []
         for area in areas:
-            area_dict = dict(area._mapping)  # Convert Row to dict
+            area_dict = row_to_dict(area)
             project_file_location = area_dict['project_file_location']
             abs_path = os.path.abspath(project_file_location)
             area_dict['project_abs_file_location'] = abs_path
@@ -843,8 +856,8 @@ def delete_project(uuid):
 
 if __name__ == '__main__':
     try:
-        from config import FLASK_HOST, FLASK_PORT, FLASK_DEBUG
-        app.run(host=FLASK_HOST, port=FLASK_PORT, debug=FLASK_DEBUG)
+        from config import FLASK_HOST, FLASK_DEBUG
+        app.run(host=FLASK_HOST, port=5002, debug=FLASK_DEBUG)
     except ImportError:
         # Fallback if config file doesn't exist
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        app.run(host='0.0.0.0', port=5002, debug=False)
