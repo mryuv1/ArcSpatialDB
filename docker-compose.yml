@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  arcspecialdb:
+    build: .
+    ports:
+      - "5002:5002"
+    volumes:
+      # Mount the database file for persistence
+      - ./elements.db:/app/elements.db
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5002/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 

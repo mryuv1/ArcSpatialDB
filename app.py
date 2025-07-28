@@ -22,8 +22,6 @@ def row_to_dict(row):
 
 app = Flask(__name__)
 DATABASE = 'elements.db'
-UPLOAD_FOLDER = 'sampleDataset'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 
 # Custom filter for datetime formatting
@@ -200,43 +198,17 @@ def api_add_project():
     if not data:
         return jsonify({"error": "No JSON data provided"}), 400
     
-    # Remove uuid from required fields since it will be generated automatically
-    required_fields = ['project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
+    required_fields = ['uuid', 'project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
     missing_fields = [f for f in required_fields if f not in data]
     
     if missing_fields:
         return jsonify({"error": f"Missing fields: {', '.join(missing_fields)}"}), 400
     
     try:
-        # Generate a new UUID using the UUID generation endpoint
-        import uuid
-        with engine.connect() as conn:
-            # Get all existing UUIDs from the database
-            existing_uuids = set()
-            result = conn.execute(select(projects_table.c.uuid))
-            for row in result:
-                existing_uuids.add(row[0])
-            
-            # Generate UUIDs until we find one that doesn't exist
-            max_attempts = 100  # Prevent infinite loops
-            attempts = 0
-            
-            while attempts < max_attempts:
-                # Generate a new UUID (using the same format as in test_api.py - first 8 characters)
-                new_uuid = str(uuid.uuid4())[:8]
-                
-                if new_uuid not in existing_uuids:
-                    break
-                
-                attempts += 1
-            
-            if attempts >= max_attempts:
-                return jsonify({"error": "Unable to generate unique UUID after maximum attempts"}), 500
-        
         with engine.begin() as conn:
-            # Insert project with the generated UUID
+            # Insert project
             conn.execute(projects_table.insert().values(
-                uuid=new_uuid,
+                uuid=data['uuid'],
                 project_name=data['project_name'],
                 user_name=data['user_name'],
                 date=data['date'],
@@ -255,7 +227,7 @@ def api_add_project():
                         return jsonify({"error": f"Missing area fields: {', '.join(area_missing_fields)}"}), 400
                     
                     conn.execute(areas_table.insert().values(
-                        project_id=new_uuid,
+                        project_id=data['uuid'],
                         xmin=area_data['xmin'],
                         ymin=area_data['ymin'],
                         xmax=area_data['xmax'],
@@ -263,7 +235,7 @@ def api_add_project():
                         scale=area_data['scale']
                     ))
         
-        return jsonify({"message": "Project added successfully", "uuid": new_uuid}), 201
+        return jsonify({"message": "Project added successfully", "uuid": data['uuid']}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -290,43 +262,6 @@ def api_get_project(uuid):
             project_dict['areas'] = areas_list
             
             return jsonify(project_dict), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/get_new_uuid', methods=['POST'])
-def api_get_new_uuid():
-    """Generate a new unique UUID that doesn't exist in the database"""
-    import uuid
-    
-    try:
-        with engine.connect() as conn:
-            # Get all existing UUIDs from the database
-            existing_uuids = set()
-            result = conn.execute(select(projects_table.c.uuid))
-            for row in result:
-                existing_uuids.add(row[0])
-            
-            # Generate UUIDs until we find one that doesn't exist
-            max_attempts = 100  # Prevent infinite loops
-            attempts = 0
-            
-            while attempts < max_attempts:
-                # Generate a new UUID (using the same format as in test_api.py - first 8 characters)
-                new_uuid = str(uuid.uuid4())[:8]
-                
-                if new_uuid not in existing_uuids:
-                    return jsonify({
-                        "uuid": new_uuid,
-                        "message": "New unique UUID generated successfully"
-                    }), 200
-                
-                attempts += 1
-            
-            # If we couldn't find a unique UUID after max attempts
-            return jsonify({
-                "error": "Unable to generate unique UUID after maximum attempts"
-            }), 500
-            
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -917,10 +852,4 @@ def delete_project(uuid):
     print(f"[DEBUG] Deletion complete for UUID: {uuid}")
     return redirect(url_for('index'))
 
-if __name__ == '__main__':
-    try:
-        from config import FLASK_HOST, FLASK_DEBUG
-        app.run(host=FLASK_HOST, port=5002, debug=FLASK_DEBUG)
-    except ImportError:
-        # Fallback if config file doesn't exist
-        app.run(host='0.0.0.0', port=5002, debug=False)
+# No app.run() here - server execution is handled by main.py

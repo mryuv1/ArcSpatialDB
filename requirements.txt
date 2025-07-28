@@ -1,9 +1,6 @@
-# These libraries are already available in your environment
-# Flask, SQLAlchemy, requests, glob2 are included in your list
-# No additional installation needed for the core functionality
-
-# Production server (install if needed)
-# waitress==2.1.2
-
-# Alternative production server (install if needed)
-# gunicorn==21.2.0 
+Flask==2.3.3
+SQLAlchemy==2.0.21
+requests==2.31.0
+glob2==0.7
+gunicorn==21.2.0
+Werkzeug==2.3.7 
