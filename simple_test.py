@@ -3,7 +3,7 @@ import requests
 # Test the UUID endpoint
 try:
     print("Testing UUID endpoint...")
-    response = requests.post("http://127.0.0.1:5002/api/get_new_uuid")
+    response = requests.post("http://127.0.0.1:5000/api/get_new_uuid")
     print(f"Status Code: {response.status_code}")
     print(f"Response: {response.text}")
     
@@ -20,7 +20,7 @@ except Exception as e:
 # Also test a known working endpoint
 try:
     print("\nTesting main page...")
-    response = requests.get("http://127.0.0.1:5002/")
+    response = requests.get("http://127.0.0.1:5000/")
     print(f"Main page status: {response.status_code}")
     
 except Exception as e:

@@ -192,6 +192,23 @@ def calculate_overlap_percentage(area_xmin, area_ymin, area_xmax, area_ymax, que
 
     return (intersect_size / area_size) * 100.0
 
+def generate_unique_uuid():
+    """
+    Generate a unique UUID that doesn't exist in the database.
+    
+    Returns:
+        str: A unique UUID string
+    """
+    with engine.connect() as conn:
+        while True:
+            generated_uuid = str(uuid.uuid4())[:8]
+            # Check if UUID already exists
+            existing = conn.execute(
+                select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
+            ).first()
+            if not existing:
+                return generated_uuid
+
 @app.route('/api/add_project', methods=['POST'])
 def api_add_project():
     data = request.get_json()
@@ -206,17 +223,10 @@ def api_add_project():
         return jsonify({"error": f"Missing fields: {', '.join(missing_fields)}"}), 400
     
     try:
+        # Generate a unique UUID using the reusable function
+        generated_uuid = generate_unique_uuid()
+        
         with engine.begin() as conn:
-            # Generate a unique UUID
-            while True:
-                generated_uuid = str(uuid.uuid4())
-                # Check if UUID already exists
-                existing = conn.execute(
-                    select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
-                ).first()
-                if not existing:
-                    break
-            
             # Insert project with generated UUID
             conn.execute(projects_table.insert().values(
                 uuid=generated_uuid,
@@ -254,17 +264,8 @@ def api_add_project():
 def api_get_new_uuid():
     """Generate a new unique UUID"""
     try:
-        with engine.connect() as conn:
-            # Generate a unique UUID
-            while True:
-                generated_uuid = str(uuid.uuid4())
-                # Check if UUID already exists
-                existing = conn.execute(
-                    select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
-                ).first()
-                if not existing:
-                    break
-        
+        # Use the reusable UUID generation function
+        generated_uuid = generate_unique_uuid()
         return jsonify({"uuid": generated_uuid}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

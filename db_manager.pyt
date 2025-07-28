@@ -82,7 +82,7 @@ def commit_to_the_db(project_name, user_name, date, file_location, paper_size, i
     try:
         from config import API_BASE_URL, API_TIMEOUT
     except ImportError:
-        API_BASE_URL = "http://localhost:5002"  # Default to local server
+        API_BASE_URL = "http://localhost:5000"  # Default to local server
         API_TIMEOUT = 30
     
     api_url = f"{API_BASE_URL}/api/add_project"
@@ -122,50 +122,14 @@ def commit_to_the_db(project_name, user_name, date, file_location, paper_size, i
         else:
             error_msg = f"❌ API Error: {response.status_code} – {response.json().get('error', 'Unknown error')}"
             print(error_msg)
-            # Fallback to local database if API fails
-            print("🔄 Falling back to local database...")
-            # Generate a local UUID for fallback
-            fallback_uuid = str(uuid.uuid4())[:8]
-            return commit_to_local_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description, fallback_uuid)
+            print("❌ Database is not connected. Please check your network connection and try again.")
+            return None
             
     except requests.exceptions.RequestException as e:
         print(f"❌ API request failed: {e}")
-        print("🔄 Falling back to local database...")
-        # Generate a local UUID for fallback
-        fallback_uuid = str(uuid.uuid4())[:8]
-        return commit_to_local_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description, fallback_uuid)
+        print("❌ Database is not connected. Please check your network connection and try again.")
+        return None
 
-def commit_to_local_db(project_name, user_name, date, file_location, paper_size, info_per_map_frame, description, unique_id):
-    """Fallback function to commit to local database if API is unavailable"""
-    DATABASE_URL = f'sqlite:///{DB_PATH}'
-    engine = create_engine(DATABASE_URL, echo=True)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    Base.metadata.create_all(engine)
-    
-    project = Project(
-        uuid=unique_id,
-        project_name=project_name,
-        description=description,
-        user_name=user_name,
-        date=date,
-        file_location=file_location,
-        paper_size=paper_size,
-    )
-    for info in info_per_map_frame:
-        area = Area(
-            xmin=info['x_min'],
-            ymin=info['y_min'],
-            xmax=info['x_max'],
-            ymax=info['y_max'],
-            scale=info['scale']
-        )
-        project.areas.append(area)
-    session.add(project)
-    session.commit()
-    session.close()
-    print(f"✅ Project saved to local database. UUID: {unique_id}")
-    return unique_id
     
 def convert_any_to_wgs84_utm(x, y, spatial_ref=None):
     """
@@ -403,14 +367,20 @@ class ExportLayoutTool(object):
         current_date = datetime.now().strftime("%d-%m-%y")
         messages.addMessage(f"{current_date}")
         unique_id = commit_to_the_db(export_name, username, current_date, export_subfolder, paper_size, info_per_map_frame, description)
-        messages.addMessage(f"Export ID: {unique_id}")
-        # Update text element with export ID
-        text_elements = layout.listElements("TEXT_ELEMENT")
-        id_text = next((el for el in text_elements if el.name == "ExportID"), None)
-        if id_text:
-            id_text.text = f"Export ID: {unique_id}"
+        
+        if unique_id is None:
+            messages.addErrorMessage("❌ Failed to connect to database. Export completed but project was not saved to database.")
+            messages.addErrorMessage("Please check your network connection and try again.")
+            # Continue with export but without database integration
         else:
-            messages.addWarningMessage("No text element named 'ExportID' found on layout.")
+            messages.addMessage(f"Export ID: {unique_id}")
+            # Update text element with export ID
+            text_elements = layout.listElements("TEXT_ELEMENT")
+            id_text = next((el for el in text_elements if el.name == "ExportID"), None)
+            if id_text:
+                id_text.text = f"Export ID: {unique_id}"
+            else:
+                messages.addWarningMessage("No text element named 'ExportID' found on layout.")
         if export_format == "PDF":
             layout.exportToPDF(export_file, resolution=dpi)
         elif export_format == "PNG":

@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 
 # Configuration - update this to your server's URL
-API_BASE_URL = "http://localhost:5002"
+API_BASE_URL = "http://localhost:5000"
 
 def test_add_project_without_uuid():
     """Test adding a project without providing a UUID"""

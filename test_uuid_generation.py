@@ -8,7 +8,7 @@ import json
 import time
 
 # Configuration - update this to your server's URL
-API_BASE_URL = "http://localhost:5002"  # Change to your server URL
+API_BASE_URL = "http://localhost:5000"  # Change to your server URL
 
 def test_get_new_uuid():
     """Test the new UUID generation endpoint"""

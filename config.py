@@ -11,7 +11,7 @@ LOCAL_DATABASE_PATH = "elements.db"
 # Flask App Configuration
 FLASK_HOST = "0.0.0.0"  # Allow external connections
 FLASK_PORT = 5000
-FLASK_DEBUG = False  # Set to False in production
+FLASK_DEBUG = True  # Set to False in production
 
 # File Upload Configuration
 UPLOAD_FOLDER = "sampleDataset"

@@ -20,8 +20,8 @@ COPY . .
 # Set permissions
 RUN chmod +x *.py
 
-# Expose port (using 5002 to match your current setup)
-EXPOSE 5002
+# Expose port (using 5000 to match config.py)
+EXPOSE 5000
 
 # Use gunicorn for production
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5002", "main:app"] 
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "main:app"] 

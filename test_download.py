@@ -7,7 +7,7 @@ import requests
 import os
 
 # Configuration - update this to your server's URL
-API_BASE_URL = "http://localhost:5000"  # or 5002 for backend
+API_BASE_URL = "http://localhost:5000"
 
 def test_download_db_manager():
     """Test downloading the db_manager.pyt file"""
