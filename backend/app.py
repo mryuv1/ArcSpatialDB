@@ -3,7 +3,22 @@ from flask_cors import CORS
 from api.projects import projects_bp
 from api.areas import areas_bp
 from api.files import files_bp
+from sqlalchemy import Table, MetaData, create_engine
 import os
+
+# Database configuration
+DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'elements.db')
+DATABASE_URL = f'sqlite:///{DB_PATH}'
+engine = create_engine(DATABASE_URL)
+metadata = MetaData()
+
+# OLD VERSION (with autoload=True) - keeping for reference
+# projects_table = Table('projects', metadata, autoload=True, autoload_with=engine)
+# areas_table = Table('areas', metadata, autoload=True, autoload_with=engine)
+
+# Current version (without autoload=True)
+projects_table = Table('projects', metadata, autoload_with=engine)
+areas_table = Table('areas', metadata, autoload_with=engine)
 
 def create_app():
     app = Flask(__name__)
