@@ -1,0 +1,35 @@
+import os
+from docx import Document
+
+# File extensions to include
+INCLUDED_EXTENSIONS = {'.py', '.html', '.bat', '.js'}
+
+def add_file_to_doc(doc, file_path):
+    doc.add_heading(f'File: {file_path}', level=2)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        doc.add_paragraph(content)
+    except Exception as e:
+        doc.add_paragraph(f"[Could not read file: {e}]")
+    doc.add_paragraph("\n" + "-"*50 + "\n")
+
+def collect_files_to_doc(root_dir, output_path):
+    doc = Document()
+    doc.add_heading('Collected Code Files', 0)
+
+    for dirpath, _, filenames in os.walk(root_dir):
+        for filename in filenames:
+            _, ext = os.path.splitext(filename)
+            if ext.lower() in INCLUDED_EXTENSIONS:
+                full_path = os.path.join(dirpath, filename)
+                add_file_to_doc(doc, full_path)
+
+    doc.save(output_path)
+    print(f"Document saved to: {output_path}")
+
+# Path configuration
+root_directory = r"C:\Users\yuval\PycharmProjects\ArcSpatialDB"
+output_docx = r"C:\Users\yuval\PycharmProjects\ArcSpatialDB\code_files_collected.docx"
+
+collect_files_to_doc(root_directory, output_docx)
