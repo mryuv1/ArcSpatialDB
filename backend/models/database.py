@@ -8,5 +8,5 @@ engine = create_engine(DATABASE_URL)
 metadata = MetaData()
 
 # Reflect tables from existing database
-projects_table = Table('projects', metadata, autoload=True, autoload_with=engine)
-areas_table = Table('areas', metadata, autoload=True, autoload_with=engine)
+projects_table = Table('projects', metadata, autoload_with=engine)
+areas_table = Table('areas', metadata, autoload_with=engine)
