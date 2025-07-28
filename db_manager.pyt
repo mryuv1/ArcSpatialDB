@@ -3,6 +3,8 @@ import uuid
 import os
 import getpass
 import requests
+import platform
+import subprocess
 from datetime import datetime
 from sqlalchemy import create_engine, Column, String, Float, Integer, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -32,6 +34,29 @@ class Area(Base):
     ymax = Column(Float, nullable=False)
     scale = Column(String, nullable=False)
     project = relationship('Project', back_populates='areas')
+
+def get_user_full_name():
+    """Get the user's full name using platform-specific methods"""
+    system = platform.system()
+    
+    if system == "Windows":
+        try:
+            username = os.getlogin()
+            domain = os.environ.get("USERDOMAIN", "")
+            command = f'wmic useraccount where "name=\'{username}\' and domain=\'{domain}\'" get fullname'
+            output = subprocess.check_output(command, shell=True).decode('cp862').splitlines()
+            lines = [line.strip() for line in output if line.strip()]
+            return lines[1] if len(lines) > 1 else getpass.getuser()
+        except Exception as e:
+            return getpass.getuser()
+    else:
+        try:
+            import pwd
+            username = getpass.getuser()
+            pw = pwd.getpwnam(username)
+            return pw.pw_gecos.split(',')[0]
+        except Exception as e:
+            return getpass.getuser()
 
 def detect_paper_size(width_mm, height_mm, tolerance=2):
     common_sizes = {
@@ -373,7 +398,7 @@ class ExportLayoutTool(object):
         # commit to the SQL DB
         paper_size = detect_paper_size(layout.pageWidth, layout.pageHeight)
         messages.addMessage(f"{paper_size}")
-        username = getpass.getuser()
+        username = get_user_full_name()
         messages.addMessage(f"{username}")
         current_date = datetime.now().strftime("%d-%m-%y")
         messages.addMessage(f"{current_date}")

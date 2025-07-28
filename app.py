@@ -4,6 +4,7 @@ import os
 import glob2
 from datetime import datetime
 import shutil
+import uuid
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -198,7 +199,7 @@ def api_add_project():
     if not data:
         return jsonify({"error": "No JSON data provided"}), 400
     
-    required_fields = ['uuid', 'project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
+    required_fields = ['project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
     missing_fields = [f for f in required_fields if f not in data]
     
     if missing_fields:
@@ -206,9 +207,19 @@ def api_add_project():
     
     try:
         with engine.begin() as conn:
-            # Insert project
+            # Generate a unique UUID
+            while True:
+                generated_uuid = str(uuid.uuid4())
+                # Check if UUID already exists
+                existing = conn.execute(
+                    select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
+                ).first()
+                if not existing:
+                    break
+            
+            # Insert project with generated UUID
             conn.execute(projects_table.insert().values(
-                uuid=data['uuid'],
+                uuid=generated_uuid,
                 project_name=data['project_name'],
                 user_name=data['user_name'],
                 date=data['date'],
@@ -227,7 +238,7 @@ def api_add_project():
                         return jsonify({"error": f"Missing area fields: {', '.join(area_missing_fields)}"}), 400
                     
                     conn.execute(areas_table.insert().values(
-                        project_id=data['uuid'],
+                        project_id=generated_uuid,
                         xmin=area_data['xmin'],
                         ymin=area_data['ymin'],
                         xmax=area_data['xmax'],
@@ -235,7 +246,43 @@ def api_add_project():
                         scale=area_data['scale']
                     ))
         
-        return jsonify({"message": "Project added successfully", "uuid": data['uuid']}), 201
+        return jsonify({"message": "Project added successfully", "uuid": generated_uuid}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/get_new_uuid', methods=['POST'])
+def api_get_new_uuid():
+    """Generate a new unique UUID"""
+    try:
+        with engine.connect() as conn:
+            # Generate a unique UUID
+            while True:
+                generated_uuid = str(uuid.uuid4())
+                # Check if UUID already exists
+                existing = conn.execute(
+                    select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
+                ).first()
+                if not existing:
+                    break
+        
+        return jsonify({"uuid": generated_uuid}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/download/db_manager.pyt')
+def download_db_manager():
+    """Download the db_manager.pyt file"""
+    try:
+        db_manager_path = os.path.join(PROJECT_ROOT, 'db_manager.pyt')
+        if os.path.exists(db_manager_path):
+            return send_file(
+                db_manager_path,
+                as_attachment=True,
+                download_name='db_manager.pyt',
+                mimetype='text/plain'
+            )
+        else:
+            return jsonify({"error": "db_manager.pyt file not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -313,10 +360,20 @@ def index():
         uuid = request.form.get('uuid', '').strip()
         if uuid:
             filters.append(projects_table.c.uuid.ilike(f"{uuid}%"))
+        # Handle user name searches (both partial and exact matches)
+        user_name_partial = request.form.get('user_name_partial', '').strip()
         user_name_list = request.form.getlist('user_name')
         selected_user_names = [n for n in user_name_list if n]
+        
+        # Combine all user name filters with OR logic
+        user_name_filters = []
+        if user_name_partial:
+            user_name_filters.append(projects_table.c.user_name.ilike(f"{user_name_partial}%"))
         if selected_user_names:
-            filters.append(or_(*[projects_table.c.user_name.ilike(f"{n}%") for n in selected_user_names]))
+            user_name_filters.extend([projects_table.c.user_name.ilike(f"{n}%") for n in selected_user_names])
+        
+        if user_name_filters:
+            filters.append(or_(*user_name_filters))
         paper_size = request.form.get('paper_size', '').strip()
         custom_height = request.form.get('custom_height', '').strip()
         custom_width = request.form.get('custom_width', '').strip()

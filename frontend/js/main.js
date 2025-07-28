@@ -8,7 +8,6 @@ class ArcSpatialDBClient {
     }
 
     async init() {
-        await this.loadUserNames();
         this.initEventListeners();
         this.loadAllProjects();
         this.loadAllAreas();
@@ -37,15 +36,7 @@ class ArcSpatialDBClient {
         }
     }
 
-    async loadUserNames() {
-        try {
-            const data = await this.apiRequest('/api/user_names');
-            this.userNames = data.user_names;
-            this.populateUserNameDropdown();
-        } catch (error) {
-            this.showError('Failed to load user names: ' + error.message);
-        }
-    }
+
 
     async searchProjects(searchData) {
         try {
@@ -142,13 +133,7 @@ class ArcSpatialDBClient {
             });
         }
 
-        // Add user name button
-        const addUserNameBtn = document.getElementById('addUserNameBtn');
-        if (addUserNameBtn) {
-            addUserNameBtn.addEventListener('click', () => {
-                this.addUserNameDropdown();
-            });
-        }
+
 
         // Paper size select
         const paperSizeSelect = document.getElementById('paper_size_select');
@@ -163,6 +148,14 @@ class ArcSpatialDBClient {
         if (relativeSizeCheckbox) {
             relativeSizeCheckbox.addEventListener('change', () => {
                 this.toggleRelativeSize();
+            });
+        }
+
+        // Download db_manager.pyt button
+        const downloadDbManagerBtn = document.getElementById('downloadDbManagerBtn');
+        if (downloadDbManagerBtn) {
+            downloadDbManagerBtn.addEventListener('click', () => {
+                this.downloadDbManager();
             });
         }
 
@@ -186,9 +179,8 @@ class ArcSpatialDBClient {
 
         // Convert FormData to object
         for (let [key, value] of formData.entries()) {
-            if (key === 'user_name') {
-                if (!searchData.user_names) searchData.user_names = [];
-                if (value.trim()) searchData.user_names.push(value.trim());
+            if (key === 'user_name_partial') {
+                if (value.trim()) searchData.user_name_partial = value.trim();
             } else if (key === 'relative_size') {
                 searchData.relative_size = true;
             } else if (value.trim()) {
@@ -199,48 +191,7 @@ class ArcSpatialDBClient {
         this.searchProjects(searchData);
     }
 
-    populateUserNameDropdown() {
-        const userNameFields = document.getElementById('user_name_fields');
-        const select = userNameFields.querySelector('select');
-        
-        if (select) {
-            // Clear existing options except the first empty one
-            select.innerHTML = '<option value=""></option>';
-            
-            // Add user names
-            this.userNames.forEach(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                select.appendChild(option);
-            });
-        }
-    }
 
-    addUserNameDropdown() {
-        const userNameFields = document.getElementById('user_name_fields');
-        const label = document.createElement('label');
-        label.innerHTML = 'User Name: ';
-        
-        const select = document.createElement('select');
-        select.name = 'user_name';
-        
-        // Add empty option
-        const emptyOpt = document.createElement('option');
-        emptyOpt.value = '';
-        select.appendChild(emptyOpt);
-        
-        // Add user names
-        this.userNames.forEach(name => {
-            const option = document.createElement('option');
-            option.value = name;
-            option.textContent = name;
-            select.appendChild(option);
-        });
-        
-        label.appendChild(select);
-        userNameFields.appendChild(label);
-    }
 
     toggleCustomSize() {
         const paperSizeSelect = document.getElementById('paper_size_select');
@@ -270,21 +221,6 @@ class ArcSpatialDBClient {
         document.getElementById('searchForm').reset();
         document.getElementById('custom_size_fields').style.display = 'none';
         document.getElementById('relative_size_percentages').style.display = 'none';
-        
-        // Clear additional user name dropdowns (keep only the first one)
-        const userNamesDiv = document.getElementById('user_name_fields');
-        const labels = userNamesDiv.querySelectorAll('label');
-        for (let i = 1; i < labels.length; i++) {
-            labels[i].remove();
-        }
-        
-        // Reset the first user name dropdown
-        if (labels.length > 0) {
-            const firstSelect = labels[0].querySelector('select');
-            if (firstSelect) {
-                firstSelect.value = '';
-            }
-        }
 
         // Clear search results
         this.displaySearchResults([]);
@@ -741,6 +677,58 @@ class ArcSpatialDBClient {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    async downloadDbManager() {
+        const downloadBtn = document.getElementById('downloadDbManagerBtn');
+        const statusDiv = document.getElementById('downloadStatus');
+        
+        if (downloadBtn) {
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = '⏳ Downloading...';
+        }
+        
+        if (statusDiv) {
+            statusDiv.className = 'download-status';
+            statusDiv.style.display = 'none';
+        }
+        
+        try {
+            const response = await fetch(`${this.baseUrl}/download/db_manager.pyt`);
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'db_manager.pyt';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                if (statusDiv) {
+                    statusDiv.textContent = '✅ Download completed successfully!';
+                    statusDiv.className = 'download-status success';
+                    statusDiv.style.display = 'block';
+                }
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+        } catch (error) {
+            console.error('Download failed:', error);
+            if (statusDiv) {
+                statusDiv.textContent = `❌ Download failed: ${error.message}`;
+                statusDiv.className = 'download-status error';
+                statusDiv.style.display = 'block';
+            }
+        } finally {
+            if (downloadBtn) {
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = '📥 Download db_manager.pyt';
+            }
+        }
     }
 }
 

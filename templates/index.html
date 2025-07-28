@@ -116,18 +116,7 @@
             background-color: #2980b9;
         }
 
-        #user_name_fields {
-            grid-column: span 2;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            align-items: flex-end;
-        }
 
-        #user_name_fields label {
-            flex: 1 1 auto;
-            min-width: 200px;
-        }
 
         .error {
             color: red;
@@ -292,10 +281,7 @@
             form {
                 grid-template-columns: 1fr;
             }
-            #user_name_fields {
-                grid-column: span 1;
-                flex-direction: column;
-            }
+
             #date_range_fields {
                 grid-column: span 1;
             }
@@ -444,6 +430,74 @@
         .actions-column button[type="submit"]:hover {
             background-color: #c0392b;
         }
+        
+        /* Download section styling */
+        .download-section {
+            background-color: #ffffff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+
+        .download-section h3 {
+            color: #2c3e50;
+            margin-top: 0;
+            margin-bottom: 10px;
+            border-bottom: none;
+        }
+
+        .download-section p {
+            margin-bottom: 20px;
+            color: #666;
+            font-style: normal;
+        }
+
+        .download-btn {
+            background-color: #27ae60;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .download-btn:hover {
+            background-color: #219a52;
+        }
+
+        .download-btn:active {
+            transform: translateY(1px);
+        }
+
+        .download-status {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            display: none;
+        }
+
+        .download-status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .download-status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -464,6 +518,16 @@
         </div>
     </div>
     
+    <!-- Download db_manager.pyt button -->
+    <div class="download-section">
+        <h3>ArcGIS Pro Tool</h3>
+        <p>Download the ArcGIS Pro toolbox for exporting layouts with automatic database integration:</p>
+        <button type="button" id="downloadDbManagerBtn" class="download-btn">
+            📥 Download db_manager.pyt
+        </button>
+        <div id="downloadStatus" class="download-status"></div>
+    </div>
+    
     <h2>Project Search</h2>
     <form method="post" id="searchForm">
       <label>Bottom Left (XMin/YMin): <input name="bottom_left" type="text" placeholder="e.g., 10.5/20.1" value="{{ request.form.bottom_left if request.form.bottom_left else '' }}"></label>
@@ -478,17 +542,24 @@
         </div>
       </div>
       <label class="full-width-field">Project UUID: <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef" value="{{ request.form.uuid if request.form.uuid else '' }}"></label>
-      <div id="user_name_fields" style="grid-column: 1 / -1;">
-        <label>User Name:
-          <select name="user_name">
-            <option value=""></option>
-            {% for name in user_names %}
-              <option value="{{ name }}">{{ name }}</option>
-            {% endfor %}
-          </select>
-        </label>
+      <div style="grid-column: 1 / -1; display: block; width: 100%;">
+        <div style="display: block; width: 100%; margin-bottom: 15px;">
+          <label style="display: block; font-weight: bold; margin-bottom: 5px;">User Name (Partial Search): 
+            <input name="user_name_partial" type="text" placeholder="Type partial name to search (e.g., 'john' for 'john_doe')" value="{{ request.form.user_name_partial if request.form.user_name_partial else '' }}" style="display: block; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1em; box-sizing: border-box; margin-top: 5px;">
+          </label>
+        </div>
+        <div style="display: block; width: 100%; margin-bottom: 15px;">
+          <label style="display: block; font-weight: bold; margin-bottom: 5px;">User Name (Exact Match):
+            <select name="user_name" style="display: block; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 1em; box-sizing: border-box; margin-top: 5px;">
+              <option value=""></option>
+              {% for name in user_names %}
+                <option value="{{ name }}" {% if name in selected_user_names %}selected{% endif %}>{{ name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
       </div>
-      <button type="button" onclick="addUserNameDropdown()">Add another user name</button>
+      <button type="button" onclick="addUserNameDropdown()">Add another exact match user name</button>
       <div class="full-width-row" id="paper_size_row">
         <label style="margin-bottom:0;">Paper Size:
           <select name="paper_size" id="paper_size_select" onchange="toggleCustomSize()">
@@ -533,9 +604,11 @@
     <script>
     function addUserNameDropdown() {
       var userNames = {{ user_names|tojson }};
-      var div = document.getElementById('user_name_fields');
+      var button = document.querySelector('button[onclick="addUserNameDropdown()"]');
+      
       var label = document.createElement('label');
-      label.innerHTML = 'User Name: ';
+      label.className = 'full-width-field';
+      label.innerHTML = 'User Name (Exact Match): ';
       var select = document.createElement('select');
       select.name = 'user_name';
       var emptyOpt = document.createElement('option');
@@ -548,7 +621,7 @@
         select.appendChild(opt);
       }
       label.appendChild(select);
-      div.appendChild(label);
+      button.parentNode.insertBefore(label, button);
     }
 
     function toggleCustomSize() {
@@ -584,18 +657,14 @@
       document.getElementById('relative_size_percentages').style.display = 'none';
       
       // Clear any additional user name dropdowns (keep only the first one)
-      var userNamesDiv = document.getElementById('user_name_fields');
-      var labels = userNamesDiv.querySelectorAll('label');
-      for (var i = 1; i < labels.length; i++) {
-        labels[i].remove();
+      var userNameSelects = document.querySelectorAll('select[name="user_name"]');
+      for (var i = 1; i < userNameSelects.length; i++) {
+        userNameSelects[i].parentNode.remove();
       }
       
       // Reset the first user name dropdown
-      if (labels.length > 0) {
-        var firstSelect = labels[0].querySelector('select');
-        if (firstSelect) {
-          firstSelect.value = '';
-        }
+      if (userNameSelects.length > 0) {
+        userNameSelects[0].value = '';
       }
       
       // Clear URL parameters and reload the page to reset everything
@@ -631,6 +700,58 @@
       }, 2000);
     }
 
+    async function downloadDbManager() {
+      const downloadBtn = document.getElementById('downloadDbManagerBtn');
+      const statusDiv = document.getElementById('downloadStatus');
+      
+      if (downloadBtn) {
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = '⏳ Downloading...';
+      }
+      
+      if (statusDiv) {
+        statusDiv.className = 'download-status';
+        statusDiv.style.display = 'none';
+      }
+      
+      try {
+        const response = await fetch('/download/db_manager.pyt');
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'db_manager.pyt';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          
+          if (statusDiv) {
+            statusDiv.textContent = '✅ Download completed successfully!';
+            statusDiv.className = 'download-status success';
+            statusDiv.style.display = 'block';
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+      } catch (error) {
+        console.error('Download failed:', error);
+        if (statusDiv) {
+          statusDiv.textContent = `❌ Download failed: ${error.message}`;
+          statusDiv.className = 'download-status error';
+          statusDiv.style.display = 'block';
+        }
+      } finally {
+        if (downloadBtn) {
+          downloadBtn.disabled = false;
+          downloadBtn.textContent = '📥 Download db_manager.pyt';
+        }
+            }
+    }
+
     // Function to get a URL parameter
     function getUrlParameter(name) {
         name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
@@ -663,40 +784,14 @@
     }
     // -----------------------------------------------------
     window.onload = function() {
-      var selected = {{ selected_user_names|tojson }};
-      var userNames = {{ user_names|tojson }};
-      var div = document.getElementById('user_name_fields');
-
-      // Clear existing dropdowns if we are re-populating with multiple or if initial is empty and we have selections
-      if (selected.length > 1 || (selected.length === 1 && selected[0] !== '' && div.querySelector('select').value === '')) {
-        div.innerHTML = '';
-      } else if (selected.length === 1 && selected[0] !== '') {
-          // If only one selected and it's not empty, just set its value and return
-          var firstSelect = div.querySelector('select');
-          if (firstSelect) {
-             firstSelect.value = selected[0];
-          }
-          // Do not return here if you want other window.onload logic to run
+      // Add download button event listener
+      const downloadDbManagerBtn = document.getElementById('downloadDbManagerBtn');
+      if (downloadDbManagerBtn) {
+        downloadDbManagerBtn.addEventListener('click', downloadDbManager);
       }
-
-      for (var j = 0; j < selected.length; j++) {
-        var label = document.createElement('label');
-        label.innerHTML = 'User Name: ';
-        var select = document.createElement('select');
-        select.name = 'user_name';
-        var emptyOpt = document.createElement('option');
-        emptyOpt.value = '';
-        select.appendChild(emptyOpt);
-        for (var i = 0; i < userNames.length; i++) {
-          var opt = document.createElement('option');
-          opt.value = userNames[i];
-          opt.text = userNames[i];
-          if (userNames[i] == selected[j]) opt.selected = true;
-          select.appendChild(opt);
-        }
-        label.appendChild(select);
-        div.appendChild(label);
-      }
+      
+      // Completely disable user name field manipulation to preserve partial search
+      // Let Flask handle all form state naturally
 
       // Add hidden input for scroll position to each filter form
       const projectsFilterForm = document.getElementById('projectsFilterForm');

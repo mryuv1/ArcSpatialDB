@@ -46,7 +46,7 @@ def get_windows_full_name():
         username = os.getlogin()
         domain = os.environ.get("USERDOMAIN", "")
         command = f'wmic useraccount where "name=\'{username}\' and domain=\'{domain}\'" get fullname'
-        output = subprocess.check_output(command, shell=True).decode().splitlines()
+        output = subprocess.check_output(command, shell=True).decode('cp862').splitlines()
         lines = [line.strip() for line in output if line.strip()]
         return lines[1] if len(lines) > 1 else "N/A"
     except Exception as e:

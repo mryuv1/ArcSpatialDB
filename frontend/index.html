@@ -27,6 +27,16 @@
     <!-- Error message container -->
     <div id="error-message" class="error" style="display: none;"></div>
     
+    <!-- Download db_manager.pyt button -->
+    <div class="download-section">
+        <h3>ArcGIS Pro Tool</h3>
+        <p>Download the ArcGIS Pro toolbox for exporting layouts with automatic database integration:</p>
+        <button type="button" id="downloadDbManagerBtn" class="download-btn">
+            📥 Download db_manager.pyt
+        </button>
+        <div id="downloadStatus" class="download-status"></div>
+    </div>
+    
     <h2>Project Search</h2>
     <form id="searchForm">
         <label>Bottom Left (XMin/YMin): 
@@ -54,14 +64,9 @@
             <input name="uuid" type="text" placeholder="e.g., a1b2c3d4-e5f6-7890-1234-567890abcdef">
         </label>
         
-        <div id="user_name_fields" style="grid-column: 1 / -1;">
-            <label>User Name:
-                <select name="user_name">
-                    <option value=""></option>
-                </select>
-            </label>
-        </div>
-        <button type="button" id="addUserNameBtn">Add another user name</button>
+        <label class="full-width-field">User Name (Partial Search): 
+            <input name="user_name_partial" type="text" placeholder="Type partial name to search (e.g., 'john' for 'john_doe')">
+        </label>
         
         <div class="full-width-row" id="paper_size_row">
             <label style="margin-bottom:0;">Paper Size:

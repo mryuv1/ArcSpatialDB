@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_file
 from flask_cors import CORS
 from api.projects import projects_bp
 from api.areas import areas_bp
@@ -35,6 +35,28 @@ def create_app():
     @app.route('/api/health')
     def health_check():
         return jsonify({'status': 'healthy', 'message': 'Backend API is running'})
+    
+    # Download db_manager.pyt endpoint
+    @app.route('/download/db_manager.pyt')
+    def download_db_manager():
+        """Download the db_manager.pyt file"""
+        try:
+            # Get the path to db_manager.pyt relative to the backend directory
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(backend_dir)
+            db_manager_path = os.path.join(project_root, 'db_manager.pyt')
+            
+            if os.path.exists(db_manager_path):
+                return send_file(
+                    db_manager_path,
+                    as_attachment=True,
+                    download_name='db_manager.pyt',
+                    mimetype='text/plain'
+                )
+            else:
+                return jsonify({"error": "db_manager.pyt file not found"}), 404
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
     
     # Error handlers
     @app.errorhandler(404)

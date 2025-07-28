@@ -4,6 +4,7 @@ from models.database import engine, projects_table, areas_table
 from utils.helpers import parse_point, calculate_area_size, convert_date_to_db_format
 from utils.file_utils import get_project_files
 import os
+import uuid
 
 projects_bp = Blueprint('projects', __name__)
 
@@ -430,7 +431,7 @@ def add_project():
     if not data:
         return jsonify({'error': 'No JSON data provided'}), 400
     
-    required_fields = ['uuid', 'project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
+    required_fields = ['project_name', 'user_name', 'date', 'file_location', 'paper_size', 'description']
     missing_fields = [f for f in required_fields if f not in data]
     
     if missing_fields:
@@ -438,9 +439,19 @@ def add_project():
     
     try:
         with engine.begin() as conn:
-            # Insert project
+            # Generate a unique UUID
+            while True:
+                generated_uuid = str(uuid.uuid4())
+                # Check if UUID already exists
+                existing = conn.execute(
+                    select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
+                ).first()
+                if not existing:
+                    break
+            
+            # Insert project with generated UUID
             conn.execute(projects_table.insert().values(
-                uuid=data['uuid'],
+                uuid=generated_uuid,
                 project_name=data['project_name'],
                 user_name=data['user_name'],
                 date=data['date'],
@@ -459,7 +470,7 @@ def add_project():
                         return jsonify({'error': f"Missing area fields: {', '.join(area_missing_fields)}"}), 400
                     
                     conn.execute(areas_table.insert().values(
-                        project_id=data['uuid'],
+                        project_id=generated_uuid,
                         xmin=area_data['xmin'],
                         ymin=area_data['ymin'],
                         xmax=area_data['xmax'],
@@ -467,9 +478,28 @@ def add_project():
                         scale=area_data['scale']
                     ))
         
-        return jsonify({'message': 'Project added successfully', 'uuid': data['uuid']}), 201
+        return jsonify({'message': 'Project added successfully', 'uuid': generated_uuid}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@projects_bp.route('/get_new_uuid', methods=['POST'])
+def get_new_uuid():
+    """Generate a new unique UUID"""
+    try:
+        with engine.connect() as conn:
+            # Generate a unique UUID
+            while True:
+                generated_uuid = str(uuid.uuid4())
+                # Check if UUID already exists
+                existing = conn.execute(
+                    select(projects_table.c.uuid).where(projects_table.c.uuid == generated_uuid)
+                ).first()
+                if not existing:
+                    break
+        
+        return jsonify({"uuid": generated_uuid}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @projects_bp.route('/user_names', methods=['GET'])
 def get_user_names():
