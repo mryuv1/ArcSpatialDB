@@ -42,7 +42,9 @@ FLASK_DEBUG = False  # Important: Set to False in production
 
 2. **Create the database** (if it doesn't exist):
    - The database will be created automatically when the app first runs
+   - The app now includes automatic database initialization and sample data creation
    - Or run `python generate_sample_db.py` to create a sample database
+   - Or run `python test_db_init.py` to test the database initialization
 
 ## 2. Deploy the Flask App
 
@@ -246,6 +248,12 @@ The Flask app will log all API requests. Check the console output or logs for:
    - Install requests library in ArcGIS Pro environment
    - Check Python path in ArcGIS Pro
    - Verify API URL is accessible from ArcGIS Pro machine
+
+5. **Database Initialization Issues**:
+   - The app now automatically creates the database and tables if they don't exist
+   - If you encounter database errors, run `python test_db_init.py` to verify initialization
+   - The app will create sample data if the database is completely empty
+   - Check console output for database initialization messages
 
 ### Debug Mode
 

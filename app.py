@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, url_for, send_file, redirect, jsonify
-from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_
+from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_, Column, String, Float, Integer, ForeignKey
 import os
 import glob2
 from datetime import datetime
@@ -34,9 +34,159 @@ DATABASE_URL = 'sqlite:///elements.db'
 engine = create_engine(DATABASE_URL)
 metadata = MetaData()
 
-# Reflect only the tables that exist
-projects_table = Table('projects', metadata, autoload_with=engine)
-areas_table = Table('areas', metadata, autoload_with=engine)
+def initialize_database():
+    """
+    Initialize the database with required tables if they don't exist.
+    This function creates the tables if the database is empty or doesn't exist.
+    """
+    try:
+        # Check if tables exist by trying to reflect them
+        metadata.reflect(bind=engine)
+        
+        # If tables don't exist, create them
+        if 'projects' not in metadata.tables or 'areas' not in metadata.tables:
+            print("🔄 Database tables not found. Creating tables...")
+            
+            # Define the projects table
+            projects_table = Table('projects', metadata,
+                Column('uuid', String, primary_key=True),
+                Column('project_name', String, nullable=False),
+                Column('user_name', String, nullable=False),
+                Column('date', String, nullable=False),
+                Column('file_location', String, nullable=False),
+                Column('paper_size', String, nullable=False),
+                Column('description', String, nullable=True)
+            )
+            
+            # Define the areas table
+            areas_table = Table('areas', metadata,
+                Column('id', Integer, primary_key=True, autoincrement=True),
+                Column('project_id', String, ForeignKey('projects.uuid'), nullable=False),
+                Column('xmin', Float, nullable=False),
+                Column('ymin', Float, nullable=False),
+                Column('xmax', Float, nullable=False),
+                Column('ymax', Float, nullable=False),
+                Column('scale', Float, nullable=False)
+            )
+            
+            # Create all tables
+            metadata.create_all(engine)
+            print("✅ Database tables created successfully!")
+            
+            return projects_table, areas_table
+        else:
+            print("✅ Database tables already exist.")
+            # Return the existing tables
+            return metadata.tables['projects'], metadata.tables['areas']
+            
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
+        # Create tables from scratch if reflection fails
+        print("🔄 Creating tables from scratch...")
+        
+        # Clear metadata and create tables
+        metadata.clear()
+        
+        projects_table = Table('projects', metadata,
+            Column('uuid', String, primary_key=True),
+            Column('project_name', String, nullable=False),
+            Column('user_name', String, nullable=False),
+            Column('date', String, nullable=False),
+            Column('file_location', String, nullable=False),
+            Column('paper_size', String, nullable=False),
+            Column('description', String, nullable=True)
+        )
+        
+        areas_table = Table('areas', metadata,
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('project_id', String, ForeignKey('projects.uuid'), nullable=False),
+            Column('xmin', Float, nullable=False),
+            Column('ymin', Float, nullable=False),
+            Column('xmax', Float, nullable=False),
+            Column('ymax', Float, nullable=False),
+            Column('scale', Float, nullable=False)
+        )
+        
+        metadata.create_all(engine)
+        print("✅ Database tables created successfully!")
+        return projects_table, areas_table
+
+# Initialize database and get table references
+projects_table, areas_table = initialize_database()
+
+def create_sample_data():
+    """
+    Create sample data if the database is empty.
+    This function adds some example projects and areas for testing.
+    """
+    try:
+        with engine.connect() as conn:
+            # Check if there are any projects
+            result = conn.execute(select(func.count()).select_from(projects_table)).scalar()
+            
+            if result == 0:
+                print("📝 Database is empty. Creating sample data...")
+                
+                # Sample projects
+                sample_projects = [
+                    {
+                        'uuid': 'sample001',
+                        'project_name': 'Sample Project 1',
+                        'user_name': 'Test User',
+                        'date': '01-01-24',
+                        'file_location': 'sampleDataset/sample1',
+                        'paper_size': 'A1',
+                        'description': 'Sample project for testing'
+                    },
+                    {
+                        'uuid': 'sample002',
+                        'project_name': 'Sample Project 2',
+                        'user_name': 'Test User',
+                        'date': '02-01-24',
+                        'file_location': 'sampleDataset/sample2',
+                        'paper_size': 'A2',
+                        'description': 'Another sample project'
+                    }
+                ]
+                
+                # Sample areas
+                sample_areas = [
+                    {
+                        'project_id': 'sample001',
+                        'xmin': 732387.35,
+                        'ymin': 3595538.73,
+                        'xmax': 740294.94,
+                        'ymax': 3601127.26,
+                        'scale': 1.0
+                    },
+                    {
+                        'project_id': 'sample002',
+                        'xmin': 741000.00,
+                        'ymin': 3600000.00,
+                        'xmax': 742000.00,
+                        'ymax': 3602000.00,
+                        'scale': 0.5
+                    }
+                ]
+                
+                # Insert sample projects
+                for project in sample_projects:
+                    conn.execute(projects_table.insert().values(**project))
+                
+                # Insert sample areas
+                for area in sample_areas:
+                    conn.execute(areas_table.insert().values(**area))
+                
+                conn.commit()
+                print("✅ Sample data created successfully!")
+            else:
+                print(f"📊 Database contains {result} projects. Skipping sample data creation.")
+                
+    except Exception as e:
+        print(f"❌ Error creating sample data: {e}")
+
+# Create sample data if database is empty
+create_sample_data()
 
 def parse_point(s):
     """
