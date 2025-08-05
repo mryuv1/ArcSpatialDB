@@ -6,7 +6,6 @@ Interacts with the Flask API similar to the commit_to_the_db function
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import requests
-import json
 from datetime import datetime
 import getpass
 import os
