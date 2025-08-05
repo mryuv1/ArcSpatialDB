@@ -416,7 +416,7 @@ Part of the ArcSpatialDB system
         self.paper_size_var.set("A4 (Portrait)")
         
         # Set default scale format
-        self.scale_var.set("Scale: 1:1000")
+        self.scale_var.set("1:1000")
     
     def browse_project_image(self):
         """Open file browser dialog for project image"""
@@ -493,20 +493,41 @@ Part of the ArcSpatialDB system
                 messagebox.showerror("Error", "Scale cannot be empty")
                 return
             
+            # Process scale to enforce 1:number format
+            scale_processed = scale.strip()
+            # Enforce 1:number format
+            if scale_processed.startswith("1:"):
+                # Already in correct format, validate the number part
+                number_part = scale_processed[2:].strip()
+                try:
+                    float(number_part)  # Validate it's a number
+                except ValueError:
+                    messagebox.showerror("Error", "Scale must be in format '1:number' (e.g., '1:1000')")
+                    return
+            else:
+                # Try to convert to 1:number format
+                try:
+                    # Check if it's a valid number
+                    float(scale_processed)
+                    scale_processed = f"1:{scale_processed}"
+                except ValueError:
+                    messagebox.showerror("Error", "Scale must be in format '1:number' (e.g., '1:1000')")
+                    return
+            
             # Create area data
             area_data = {
                 'xmin': int(xmin),
                 'ymin': int(ymin),
                 'xmax': int(xmax),
                 'ymax': int(ymax),
-                'scale': scale
+                'scale': scale_processed
             }
             
             # Add to list
             self.areas_data.append(area_data)
             
             # Update listbox
-            area_text = f"X: {int(xmin)}-{int(xmax)}, Y: {int(ymin)}-{int(ymax)}, {scale}"
+            area_text = f"X: {int(xmin)}-{int(xmax)}, Y: {int(ymin)}-{int(ymax)}, {scale_processed}"
             self.areas_listbox.insert(tk.END, area_text)
             
             # Clear input fields
