@@ -623,85 +623,98 @@ def index():
             with engine.connect() as conn:
                 # Always join areas to retrieve scales if we're going to display them
                 # For search results, we want to show all scales for a project if multiple exist
-                join_stmt = projects_table.join(areas_table, projects_table.c.uuid == areas_table.c.project_id, isouter=True)
+                # Use outerjoin to match "All Projects" table behavior
+                join_stmt = projects_table.outerjoin(areas_table, projects_table.c.uuid == areas_table.c.project_id)
 
                 # Remove all references to relative_size, inside, outside, percentage_overlap, and their post-processing
                 # The percentage_overlap_enabled and overlap_percentage logic is removed.
                 # The default spatial filter is now always INSIDE.
 
-                # Combine all spatial filters with OR operator
-                if filters:
-                    results = conn.execute(select(*projects_table.c, *areas_table.c).select_from(join_stmt).where(and_(*filters))).fetchall()
+                # Use the same aggregation approach for all search results to ensure consistent associated_scales
+                # This matches the "All Projects" table approach exactly
+                projects_join_stmt = projects_table.outerjoin(areas_table, projects_table.c.uuid == areas_table.c.project_id)
+                sel = select(
+                    projects_table.c.uuid,
+                    projects_table.c.project_name,
+                    projects_table.c.user_name,
+                    projects_table.c.date,
+                    projects_table.c.file_location,
+                    projects_table.c.paper_size,
+                    projects_table.c.description,
+                    func.coalesce(func.group_concat(distinct(areas_table.c.scale)), '').label('associated_scales')
+                ).select_from(projects_join_stmt)
 
-                    # Apply intersection range filter if enabled
-                    if intersection_range_enabled and bottom_left and top_right and intersection_range_from and intersection_range_to:
-                        try:
-                            intersection_from = float(intersection_range_from)
-                            intersection_to = float(intersection_range_to)
-                            required_area = calculate_area_size(xmin, ymin, xmax, ymax)
-                            filtered_results = []
-                            for res in results:
-                                res_dict = row_to_dict(res)
-                                # Only filter if area coordinates are present
-                                if all(res_dict.get(k) is not None for k in ['xmin', 'ymin', 'xmax', 'ymax']):
+                if filters:
+                    sel = sel.where(and_(*filters))
+
+                sel = sel.group_by(
+                    projects_table.c.uuid,
+                    projects_table.c.project_name,
+                    projects_table.c.user_name,
+                    projects_table.c.date,
+                    projects_table.c.file_location,
+                    projects_table.c.paper_size,
+                    projects_table.c.description
+                )
+                
+                print(f"\n🔍 DEBUG: Executing search query with associated_scales...")
+                print(f"🔍 DEBUG: Search SQL Query: {sel}")
+                
+                search_results = conn.execute(sel)
+                results = [row._mapping for row in search_results]
+                
+                print(f"🔍 DEBUG: Search results count: {len(results)}")
+                for i, row in enumerate(results):
+                    print(f"🔍 DEBUG: Search result {i+1}: {row}")
+                    print(f"🔍 DEBUG: Search result {i+1} associated_scales: '{row.get('associated_scales', 'NOT_FOUND')}'")
+
+                # Apply intersection range filter if enabled (after aggregation)
+                if intersection_range_enabled and bottom_left and top_right and intersection_range_from and intersection_range_to:
+                    try:
+                        intersection_from = float(intersection_range_from)
+                        intersection_to = float(intersection_range_to)
+                        required_area = calculate_area_size(xmin, ymin, xmax, ymax)
+                        filtered_results = []
+                        for res in results:
+                            res_dict = row_to_dict(res)
+                            # For intersection filtering, we need to check individual areas
+                            # This requires a separate query to get area details
+                            project_uuid = res_dict['uuid']
+                            area_query = select(areas_table).where(areas_table.c.project_id == project_uuid)
+                            project_areas = conn.execute(area_query).fetchall()
+                            
+                            # Check if any area meets the intersection criteria
+                            area_meets_criteria = False
+                            for area in project_areas:
+                                area_dict = row_to_dict(area)
+                                if all(area_dict.get(k) is not None for k in ['xmin', 'ymin', 'xmax', 'ymax']):
                                     # Calculate intersection area
-                                    intersect_xmin = max(res_dict['xmin'], xmin)
-                                    intersect_ymin = max(res_dict['ymin'], ymin)
-                                    intersect_xmax = min(res_dict['xmax'], xmax)
-                                    intersect_ymax = min(res_dict['ymax'], ymax)
+                                    intersect_xmin = max(area_dict['xmin'], xmin)
+                                    intersect_ymin = max(area_dict['ymin'], ymin)
+                                    intersect_xmax = min(area_dict['xmax'], xmax)
+                                    intersect_ymax = min(area_dict['ymax'], ymax)
                                     if intersect_xmin < intersect_xmax and intersect_ymin < intersect_ymax:
                                         intersection_area = (intersect_xmax - intersect_xmin) * (intersect_ymax - intersect_ymin)
                                         intersection_pct = (intersection_area / required_area) * 100 if required_area > 0 else 0
                                         if intersection_from <= intersection_pct <= intersection_to:
-                                            filtered_results.append(res_dict)
-                                else:
-                                    # If area coordinates are missing, skip filtering
-                                    filtered_results.append(res_dict)
-                            results = filtered_results
-                        except ValueError:
-                            error = 'Intersection range values must be valid numbers.'
+                                            area_meets_criteria = True
+                                            break
+                            
+                            if area_meets_criteria:
+                                filtered_results.append(res_dict)
+                        results = filtered_results
+                    except ValueError:
+                        error = 'Intersection range values must be valid numbers.'
 
-                    # Get the filtered projects and their associated scales
-                    processed_results = []
-                    for res in results:
-                        res_dict = row_to_dict(res)
-                        uuid = res_dict['uuid']
-                        # The project_scales logic is removed as percentage overlap is gone.
-                        # If you want to show associated_scales, use the value from the query or set to None.
-                        res_dict['associated_scales'] = res_dict.get('associated_scales', None)
-                        processed_results.append(res_dict)
-                    results = processed_results
-                else:
-                    # Standard filtering - we need to group by project to get all scales per project
-                    sel = select(
-                        projects_table.c.uuid,
-                        projects_table.c.project_name,
-                        projects_table.c.user_name,
-                        projects_table.c.date,
-                        projects_table.c.file_location,
-                        projects_table.c.paper_size,
-                        projects_table.c.description,  # <-- Added
-                        func.group_concat(distinct(areas_table.c.scale)).label('associated_scales') # Aggregate scales
-                    ).select_from(join_stmt)
-
-                    if filters:
-                        sel = sel.where(and_(*filters))
-
-                    sel = sel.group_by(
-                        projects_table.c.uuid,
-                        projects_table.c.project_name,
-                        projects_table.c.user_name,
-                        projects_table.c.date,
-                        projects_table.c.file_location,
-                        projects_table.c.paper_size,
-                        projects_table.c.description  # <-- Added
-                    )
-                    results = [row._mapping for row in conn.execute(sel)]
 
             # Add absolute file location for file explorer links
             processed_results = []
-            for row in results or []:
+            print(f"\n🔍 DEBUG: Processing final results for file information...")
+            print(f"🔍 DEBUG: Results to process count: {len(results or [])}")
+            for i, row in enumerate(results or []):
                 proj = row_to_dict(row)
+                print(f"🔍 DEBUG: Final processing {i+1} - associated_scales before: '{proj.get('associated_scales', 'NOT_FOUND')}'")
+                
                 rel_path = proj['file_location']
                 abs_path = os.path.abspath(rel_path)
                 proj['abs_file_location'] = abs_path
@@ -739,9 +752,13 @@ def index():
                     proj['view_file_path'] = None
                     proj['view_file_type'] = None
 
+                print(f"🔍 DEBUG: Final processing {i+1} - associated_scales after: '{proj.get('associated_scales', 'NOT_FOUND')}'")
                 processed_results.append(proj)
 
             results = processed_results
+            print(f"\n🔍 DEBUG: Final results count: {len(results)}")
+            for i, proj in enumerate(results):
+                print(f"🔍 DEBUG: Final result {i+1} associated_scales: '{proj.get('associated_scales', 'NOT_FOUND')}'")
     # This block handles GET requests for pagination and table filters
     # For "All Projects" table
     projects_current_page = request.args.get('page', 1, type=int)
@@ -845,7 +862,7 @@ def index():
             projects_table.c.file_location,
             projects_table.c.paper_size,
             projects_table.c.description,  # <-- Added
-            func.group_concat(distinct(areas_table.c.scale)).label('associated_scales')
+            func.coalesce(func.group_concat(distinct(areas_table.c.scale)), '').label('associated_scales')
         ).select_from(projects_join_stmt).group_by(
             projects_table.c.uuid,
             projects_table.c.project_name,
@@ -866,7 +883,7 @@ def index():
             scale_filter_val = projects_filters['associated_scales_filter']
             # Convert float to string for comparison with concatenated string
             projects_base_query = projects_base_query.having(
-                func.group_concat(distinct(areas_table.c.scale)).like(f"%{scale_filter_val}%")
+                func.coalesce(func.group_concat(distinct(areas_table.c.scale)), '').like(f"%{scale_filter_val}%")
             )
 
 
@@ -888,7 +905,7 @@ def index():
         if projects_filters['associated_scales_filter']:
              scale_filter_val = projects_filters['associated_scales_filter']
              count_subquery = count_subquery.having(
-                 func.group_concat(distinct(areas_table.c.scale)).like(f"%{scale_filter_val}%")
+                 func.coalesce(func.group_concat(distinct(areas_table.c.scale)), '').like(f"%{scale_filter_val}%")
              )
 
         projects_total_items = conn.execute(select(func.count()).select_from(count_subquery.subquery())).scalar_one()
@@ -901,12 +918,31 @@ def index():
 
         # Query projects for the current page with filters and pagination
         projects_stmt = projects_base_query.limit(projects_per_page).offset((projects_current_page - 1) * projects_per_page)
+        
+        # Debug: Print the SQL query being executed
+        print(f"\n🔍 DEBUG: Executing projects query with associated_scales...")
+        print(f"🔍 DEBUG: SQL Query: {projects_stmt}")
+        
         projects = conn.execute(projects_stmt).fetchall()
+        
+        # Debug: Print raw results
+        print(f"🔍 DEBUG: Raw query results count: {len(projects)}")
+        for i, proj in enumerate(projects):
+            print(f"🔍 DEBUG: Project {i+1} raw result: {proj}")
+            if hasattr(proj, '_mapping'):
+                print(f"🔍 DEBUG: Project {i+1} mapping: {proj._mapping}")
+            else:
+                print(f"🔍 DEBUG: Project {i+1} keys: {proj.keys() if hasattr(proj, 'keys') else 'No keys method'}")
 
         # Add file information for projects (same as in search results)
         projects_list = []
-        for proj in projects:
+        for i, proj in enumerate(projects):
+            print(f"\n🔍 DEBUG: Processing project {i+1}...")
             proj_dict = row_to_dict(proj)
+            print(f"🔍 DEBUG: Project {i+1} dict: {proj_dict}")
+            print(f"🔍 DEBUG: Project {i+1} associated_scales: '{proj_dict.get('associated_scales', 'NOT_FOUND')}'")
+            print(f"🔍 DEBUG: Project {i+1} associated_scales type: {type(proj_dict.get('associated_scales', 'NOT_FOUND'))}")
+            
             rel_path = proj_dict['file_location']
             abs_path = os.path.abspath(rel_path)
             proj_dict['abs_file_location'] = abs_path
@@ -947,9 +983,13 @@ def index():
                 proj_dict['view_file_path'] = None
                 proj_dict['view_file_type'] = None
 
+            print(f"🔍 DEBUG: Project {i+1} final dict associated_scales: '{proj_dict.get('associated_scales', 'NOT_FOUND')}'")
             projects_list.append(proj_dict)
 
         projects = projects_list  # Replace the original list with the processed one
+        print(f"\n🔍 DEBUG: Final projects list count: {len(projects)}")
+        for i, proj in enumerate(projects):
+            print(f"🔍 DEBUG: Final project {i+1} associated_scales: '{proj.get('associated_scales', 'NOT_FOUND')}'")
 
         # Get total count for areas pagination
         areas_count_stmt = select(func.count()).select_from(areas_table)

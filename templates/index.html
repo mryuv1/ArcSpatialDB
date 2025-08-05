@@ -942,7 +942,7 @@
                   <td>{{ proj.file_location }}</td>
                   <td>{{ proj.paper_size }}</td>
                   <td>{{ proj.description }}</td>
-                  <td>{{ proj.get('associated_scales', 'N/A') }}</td>
+                  <td>{{ proj.get('associated_scales', 'N/A') if proj.get('associated_scales') else 'N/A' }}</td>
                   <td class="actions-column">
                     {% if proj.view_file_path %}
                       <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
@@ -996,7 +996,7 @@
                     <td>{{ proj.file_location }}</td>
                     <td>{{ proj.paper_size }}</td>
                     <td>{{ proj.description }}</td>
-				<td>{{ proj.get('associated_scales', 'N/A') }}</td> 
+				<td>{{ proj.get('associated_scales', 'N/A') if proj.get('associated_scales') else 'N/A' }}</td> 
                     <td class="actions-column">
                       {% if proj.view_file_path %}
                         <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>

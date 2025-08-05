@@ -1,0 +1,28 @@
+# ArcSpatialDB Development Requirements
+# Includes additional tools for development and testing
+
+# Core dependencies (same as production)
+-r requirements.txt
+
+# Development and Testing
+pytest==7.4.0
+pytest-flask==1.2.0
+pytest-cov==4.1.0
+
+# Code Quality and Formatting
+flake8==6.0.0
+black==23.3.0
+isort==5.12.0
+
+# Environment Management
+python-dotenv==1.0.0
+
+# Development Server
+nodemon==3.0.2
+
+# Documentation
+Sphinx==7.1.2
+sphinx-rtd-theme==1.3.0
+
+# Debugging
+ipdb==0.13.13 

@@ -1,0 +1,55 @@
+# ArcSpatialDB Complete Requirements File
+# This file contains all Python libraries used in the project with their versions
+
+# Core Web Framework
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Database ORM
+SQLAlchemy==2.0.21
+
+# HTTP Client for API calls
+requests==2.31.0
+
+# File pattern matching
+glob2==0.7
+
+# Production WSGI Server
+gunicorn==21.2.0
+
+# CORS support for backend API
+Flask-CORS==4.0.0
+
+# Word document processing
+python-docx==0.8.11
+
+# Production WSGI Server (alternative to gunicorn)
+waitress==2.1.2
+
+# Additional utilities that might be needed
+# (These are part of Python standard library but listed for reference)
+# os - built-in
+# sys - built-in  
+# json - built-in
+# uuid - built-in
+# datetime - built-in
+# re - built-in
+# tempfile - built-in
+# shutil - built-in
+# platform - built-in
+# getpass - built-in
+# socket - built-in
+# subprocess - built-in
+# urllib - built-in
+# sqlite3 - built-in
+
+# Development and Testing (optional)
+# pytest==7.4.0
+# pytest-flask==1.2.0
+
+# Code Quality (optional)
+# flake8==6.0.0
+# black==23.3.0
+
+# Environment Management (optional)
+# python-dotenv==1.0.0 
