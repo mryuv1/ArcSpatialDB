@@ -1002,7 +1002,7 @@
                   <td>{{ area.ymin }}</td>
                   <td>{{ area.xmax }}</td>
                   <td>{{ area.ymax }}</td>
-                  <td>{{ area.scale.replace('Scale:', '').strip() if area.scale else '' }}</td>
+                  <td>{{ area.scale|string if area.scale else '' }}</td>
                   <td class="actions-column">
                     <a href="#" onclick="showFileModalOrNoFiles({{ area.project_all_files|tojson|safe }}); return false">View Project</a>
                     <a href="#" onclick="copyPath('{{ area.project_file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
