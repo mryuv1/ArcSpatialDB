@@ -231,11 +231,14 @@ def search_projects():
         scale = data.get('scale', '').strip()
         if scale:
             try:
+                # Try to parse as float for backward compatibility
                 scale_val = float(scale)
                 join_areas = True
-                filters.append(areas_table.c.scale == scale_val)
+                filters.append(areas_table.c.scale == str(scale_val))
             except ValueError:
-                return jsonify({'error': 'Scale must be a number.'}), 400
+                # If not a number, treat as string scale format
+                join_areas = True
+                filters.append(areas_table.c.scale.ilike(f"%{scale}%"))
 
         # Parse date range
         date_from = data.get('date_from', '').strip()
@@ -479,13 +482,15 @@ def add_project():
                     if area_missing_fields:
                         return jsonify({'error': f"Missing area fields: {', '.join(area_missing_fields)}"}), 400
                     
+                    scale_value = area_data['scale']
+                    
                     conn.execute(areas_table.insert().values(
                         project_id=generated_uuid,
                         xmin=area_data['xmin'],
                         ymin=area_data['ymin'],
                         xmax=area_data['xmax'],
                         ymax=area_data['ymax'],
-                        scale=area_data['scale']
+                        scale=scale_value
                     ))
         
         return jsonify({'message': 'Project added successfully', 'uuid': generated_uuid}), 201

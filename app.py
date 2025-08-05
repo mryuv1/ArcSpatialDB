@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, url_for, send_file, redirect, jsonify
-from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, text, or_, Column, String, Float, Integer, ForeignKey
+from sqlalchemy import create_engine, MetaData, Table, and_, select, distinct, func, or_, Column, String, Float, Integer, ForeignKey
 import os
 import glob2
 from datetime import datetime
@@ -22,8 +22,6 @@ def row_to_dict(row):
         return {key: row[key] for key in row.keys()}
 
 app = Flask(__name__)
-DATABASE = 'elements.db'
-
 
 # Custom filter for datetime formatting
 @app.template_filter('datetime')
@@ -66,7 +64,7 @@ def initialize_database():
                 Column('ymin', Float, nullable=False),
                 Column('xmax', Float, nullable=False),
                 Column('ymax', Float, nullable=False),
-                Column('scale', Float, nullable=False)
+                Column('scale', String, nullable=False)
             )
             
             # Create all tables
@@ -104,7 +102,7 @@ def initialize_database():
             Column('ymin', Float, nullable=False),
             Column('xmax', Float, nullable=False),
             Column('ymax', Float, nullable=False),
-            Column('scale', Float, nullable=False)
+            Column('scale', String, nullable=False)
         )
         
         metadata.create_all(engine)
@@ -157,7 +155,7 @@ def create_sample_data():
                         'ymin': 3595538.73,
                         'xmax': 740294.94,
                         'ymax': 3601127.26,
-                        'scale': 1.0
+                        'scale': '1:1000'
                     },
                     {
                         'project_id': 'sample002',
@@ -165,7 +163,7 @@ def create_sample_data():
                         'ymin': 3600000.00,
                         'xmax': 742000.00,
                         'ymax': 3602000.00,
-                        'scale': 0.5
+                        'scale': '1:2000'
                     }
                 ]
                 
@@ -397,13 +395,18 @@ def api_add_project():
                     if area_missing_fields:
                         return jsonify({"error": f"Missing area fields: {', '.join(area_missing_fields)}"}), 400
                     
+                    # Convert scale to string format if it's a number
+                    scale_value = area_data['scale']
+                    if isinstance(scale_value, (int, float)):
+                        scale_value = f"1:{int(scale_value)}"
+                    
                     conn.execute(areas_table.insert().values(
                         project_id=generated_uuid,
                         xmin=area_data['xmin'],
                         ymin=area_data['ymin'],
                         xmax=area_data['xmax'],
                         ymax=area_data['ymax'],
-                        scale=area_data['scale']
+                        scale=scale_value
                     ))
         
         return jsonify({"message": "Project added successfully", "uuid": generated_uuid}), 201
@@ -492,7 +495,6 @@ def index():
     if request.method == 'POST':
         # This block handles the main search form submission
         filters = []
-        join_areas = False
         # Parse spatial box
         bottom_left = request.form.get('bottom_left', '').strip()
         top_right = request.form.get('top_right', '').strip()
@@ -515,7 +517,6 @@ def index():
                 if xmin >= xmax or ymin >= ymax:
                     error = 'Bottom Left must be southwest (smaller X and Y) of Top Right. Please check your input.'
                 else:
-                    join_areas = True
                     # Only use the default INSIDE spatial filter
                     inside_filters = [
                         areas_table.c.xmin >= xmin,
@@ -561,13 +562,15 @@ def index():
                 error = 'Please enter both height and width for custom size.'
         scale = request.form.get('scale', '').strip()
         if scale:
+            # Filter projects by checking if *any* associated area has this scale
+            # Support both old numeric format and new string format
             try:
+                # Try to parse as float for backward compatibility
                 scale_val = float(scale)
-                # Filter projects by checking if *any* associated area has this scale
-                join_areas = True # Ensure join is active if scale is filtered
-                filters.append(areas_table.c.scale == scale_val)
+                filters.append(areas_table.c.scale == str(scale_val))
             except ValueError:
-                error = 'Scale must be a number.'
+                # If not a number, treat as string scale format
+                filters.append(areas_table.c.scale.ilike(f"%{scale}%"))
 
         # Parse date range
         date_from = request.form.get('date_from', '').strip()
@@ -621,15 +624,6 @@ def index():
 
         if error is None:
             with engine.connect() as conn:
-                # Always join areas to retrieve scales if we're going to display them
-                # For search results, we want to show all scales for a project if multiple exist
-                # Use outerjoin to match "All Projects" table behavior
-                join_stmt = projects_table.outerjoin(areas_table, projects_table.c.uuid == areas_table.c.project_id)
-
-                # Remove all references to relative_size, inside, outside, percentage_overlap, and their post-processing
-                # The percentage_overlap_enabled and overlap_percentage logic is removed.
-                # The default spatial filter is now always INSIDE.
-
                 # Use the same aggregation approach for all search results to ensure consistent associated_scales
                 # This matches the "All Projects" table approach exactly
                 projects_join_stmt = projects_table.outerjoin(areas_table, projects_table.c.uuid == areas_table.c.project_id)
@@ -657,16 +651,8 @@ def index():
                     projects_table.c.description
                 )
                 
-                print(f"\n🔍 DEBUG: Executing search query with associated_scales...")
-                print(f"🔍 DEBUG: Search SQL Query: {sel}")
-                
                 search_results = conn.execute(sel)
                 results = [row._mapping for row in search_results]
-                
-                print(f"🔍 DEBUG: Search results count: {len(results)}")
-                for i, row in enumerate(results):
-                    print(f"🔍 DEBUG: Search result {i+1}: {row}")
-                    print(f"🔍 DEBUG: Search result {i+1} associated_scales: '{row.get('associated_scales', 'NOT_FOUND')}'")
 
                 # Apply intersection range filter if enabled (after aggregation)
                 if intersection_range_enabled and bottom_left and top_right and intersection_range_from and intersection_range_to:
@@ -709,11 +695,8 @@ def index():
 
             # Add absolute file location for file explorer links
             processed_results = []
-            print(f"\n🔍 DEBUG: Processing final results for file information...")
-            print(f"🔍 DEBUG: Results to process count: {len(results or [])}")
             for i, row in enumerate(results or []):
                 proj = row_to_dict(row)
-                print(f"🔍 DEBUG: Final processing {i+1} - associated_scales before: '{proj.get('associated_scales', 'NOT_FOUND')}'")
                 
                 rel_path = proj['file_location']
                 abs_path = os.path.abspath(rel_path)
@@ -752,13 +735,9 @@ def index():
                     proj['view_file_path'] = None
                     proj['view_file_type'] = None
 
-                print(f"🔍 DEBUG: Final processing {i+1} - associated_scales after: '{proj.get('associated_scales', 'NOT_FOUND')}'")
                 processed_results.append(proj)
 
             results = processed_results
-            print(f"\n🔍 DEBUG: Final results count: {len(results)}")
-            for i, proj in enumerate(results):
-                print(f"🔍 DEBUG: Final result {i+1} associated_scales: '{proj.get('associated_scales', 'NOT_FOUND')}'")
     # This block handles GET requests for pagination and table filters
     # For "All Projects" table
     projects_current_page = request.args.get('page', 1, type=int)
@@ -843,10 +822,12 @@ def index():
             areas_query_filters.append(areas_table.c.ymax == -1)
     if areas_filters['scale_filter']:
         try:
+            # Try to parse as float for backward compatibility
             scale_val = float(areas_filters['scale_filter'])
-            areas_query_filters.append(areas_table.c.scale == scale_val)
+            areas_query_filters.append(areas_table.c.scale == str(scale_val))
         except ValueError:
-            areas_query_filters.append(areas_table.c.scale == -1)
+            # If not a number, treat as string scale format
+            areas_query_filters.append(areas_table.c.scale.ilike(f"%{areas_filters['scale_filter']}%"))
 
 
     with engine.connect() as conn:
@@ -919,29 +900,12 @@ def index():
         # Query projects for the current page with filters and pagination
         projects_stmt = projects_base_query.limit(projects_per_page).offset((projects_current_page - 1) * projects_per_page)
         
-        # Debug: Print the SQL query being executed
-        print(f"\n🔍 DEBUG: Executing projects query with associated_scales...")
-        print(f"🔍 DEBUG: SQL Query: {projects_stmt}")
-        
         projects = conn.execute(projects_stmt).fetchall()
-        
-        # Debug: Print raw results
-        print(f"🔍 DEBUG: Raw query results count: {len(projects)}")
-        for i, proj in enumerate(projects):
-            print(f"🔍 DEBUG: Project {i+1} raw result: {proj}")
-            if hasattr(proj, '_mapping'):
-                print(f"🔍 DEBUG: Project {i+1} mapping: {proj._mapping}")
-            else:
-                print(f"🔍 DEBUG: Project {i+1} keys: {proj.keys() if hasattr(proj, 'keys') else 'No keys method'}")
 
         # Add file information for projects (same as in search results)
         projects_list = []
         for i, proj in enumerate(projects):
-            print(f"\n🔍 DEBUG: Processing project {i+1}...")
             proj_dict = row_to_dict(proj)
-            print(f"🔍 DEBUG: Project {i+1} dict: {proj_dict}")
-            print(f"🔍 DEBUG: Project {i+1} associated_scales: '{proj_dict.get('associated_scales', 'NOT_FOUND')}'")
-            print(f"🔍 DEBUG: Project {i+1} associated_scales type: {type(proj_dict.get('associated_scales', 'NOT_FOUND'))}")
             
             rel_path = proj_dict['file_location']
             abs_path = os.path.abspath(rel_path)
@@ -983,13 +947,9 @@ def index():
                 proj_dict['view_file_path'] = None
                 proj_dict['view_file_type'] = None
 
-            print(f"🔍 DEBUG: Project {i+1} final dict associated_scales: '{proj_dict.get('associated_scales', 'NOT_FOUND')}'")
             projects_list.append(proj_dict)
 
         projects = projects_list  # Replace the original list with the processed one
-        print(f"\n🔍 DEBUG: Final projects list count: {len(projects)}")
-        for i, proj in enumerate(projects):
-            print(f"🔍 DEBUG: Final project {i+1} associated_scales: '{proj.get('associated_scales', 'NOT_FOUND')}'")
 
         # Get total count for areas pagination
         areas_count_stmt = select(func.count()).select_from(areas_table)

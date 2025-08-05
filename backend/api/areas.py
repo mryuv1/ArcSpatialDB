@@ -58,10 +58,12 @@ def get_all_areas():
                 query_filters.append(areas_table.c.ymax == -1)
         if filters['scale_filter']:
             try:
+                # Try to parse as float for backward compatibility
                 scale_val = float(filters['scale_filter'])
-                query_filters.append(areas_table.c.scale == scale_val)
+                query_filters.append(areas_table.c.scale == str(scale_val))
             except ValueError:
-                query_filters.append(areas_table.c.scale == -1)
+                # If not a number, treat as string scale format
+                query_filters.append(areas_table.c.scale.ilike(f"%{filters['scale_filter']}%"))
 
         with engine.connect() as conn:
             # Get total count for areas pagination
