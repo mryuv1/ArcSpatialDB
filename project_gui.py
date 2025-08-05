@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Simple GUI for manually adding projects to ArcSpatialDB
 Interacts with the Flask API similar to the commit_to_the_db function
@@ -7,12 +6,21 @@ Interacts with the Flask API similar to the commit_to_the_db function
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import requests
-import json
 from datetime import datetime
 import getpass
 import os
 import sys
 import shutil
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
 
 class ProjectGUI:
     def __init__(self, root):
@@ -197,6 +205,19 @@ Part of the ArcSpatialDB system
         
         messagebox.showinfo("About ArcSpatialDB GUI", about_text)
     
+    def toggle_uuid_placement(self):
+        """Enable/disable UUID placement options based on checkbox"""
+        if self.add_uuid_var.get():
+            # Enable UUID placement options
+            for child in self.uuid_placement_frame.winfo_children():
+                for grandchild in child.winfo_children():
+                    grandchild.configure(state="normal")
+        else:
+            # Disable UUID placement options
+            for child in self.uuid_placement_frame.winfo_children():
+                for grandchild in child.winfo_children():
+                    grandchild.configure(state="disabled")
+    
     def create_widgets(self):
         """Create all GUI widgets"""
         # Main frame with scrollbar
@@ -259,15 +280,45 @@ Part of the ArcSpatialDB system
         ttk.Radiobutton(operation_frame, text="Move Files", variable=self.file_operation_var, value="move").pack(side=tk.LEFT, padx=(0, 10))
         ttk.Radiobutton(operation_frame, text="Copy Files", variable=self.file_operation_var, value="copy").pack(side=tk.LEFT)
 
+        # UUID Placement Option
+        ttk.Label(project_frame, text="UUID Placement on Image:").grid(row=8, column=0, sticky=tk.W, pady=2)
+        uuid_frame = ttk.Frame(project_frame)
+        uuid_frame.grid(row=8, column=1, sticky=tk.EW, pady=2, padx=(5, 0))
+        
+        # Add UUID checkbox
+        uuid_checkbox_frame = ttk.Frame(uuid_frame)
+        uuid_checkbox_frame.pack(fill=tk.X, pady=(0, 5))
+        self.add_uuid_var = tk.BooleanVar(value=True)  # Default to True
+        ttk.Checkbutton(uuid_checkbox_frame, text="Add UUID overlay to image/PDF", 
+                       variable=self.add_uuid_var, command=self.toggle_uuid_placement).pack(side=tk.LEFT)
+        
+        # UUID placement options frame
+        self.uuid_placement_frame = ttk.Frame(uuid_frame)
+        self.uuid_placement_frame.pack(fill=tk.X)
+        self.uuid_placement_var = tk.StringVar(value="bottom_right")
+        
+        # Create placement options in a more compact layout
+        placement_row1 = ttk.Frame(self.uuid_placement_frame)
+        placement_row1.pack(fill=tk.X, pady=(0, 2))
+        ttk.Radiobutton(placement_row1, text="Top Left", variable=self.uuid_placement_var, value="top_left").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(placement_row1, text="Top Right", variable=self.uuid_placement_var, value="top_right").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(placement_row1, text="Middle Left", variable=self.uuid_placement_var, value="middle_left").pack(side=tk.LEFT)
+        
+        placement_row2 = ttk.Frame(self.uuid_placement_frame)
+        placement_row2.pack(fill=tk.X)
+        ttk.Radiobutton(placement_row2, text="Middle Right", variable=self.uuid_placement_var, value="middle_right").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(placement_row2, text="Bottom Left", variable=self.uuid_placement_var, value="bottom_left").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(placement_row2, text="Bottom Right", variable=self.uuid_placement_var, value="bottom_right").pack(side=tk.LEFT)
+
         # Paper Size
-        ttk.Label(project_frame, text="Paper Size:").grid(row=8, column=0, sticky=tk.W, pady=2)
+        ttk.Label(project_frame, text="Paper Size:").grid(row=9, column=0, sticky=tk.W, pady=2)
         self.paper_size_var = tk.StringVar()
         paper_combo = ttk.Combobox(project_frame, textvariable=self.paper_size_var, 
                                   values=["A0 (Portrait)", "A0 (Landscape)", "A1 (Portrait)", "A1 (Landscape)", 
                                          "A2 (Portrait)", "A2 (Landscape)", "A3 (Portrait)", "A3 (Landscape)",
                                          "A4 (Portrait)", "A4 (Landscape)", "A5 (Portrait)", "A5 (Landscape)",
                                          "B0 (Portrait)", "B0 (Landscape)"], width=47)
-        paper_combo.grid(row=8, column=1, sticky=tk.EW, pady=2, padx=(5, 0))
+        paper_combo.grid(row=9, column=1, sticky=tk.EW, pady=2, padx=(5, 0))
         
         # Configure column weights
         project_frame.columnconfigure(1, weight=1)
@@ -279,40 +330,44 @@ Part of the ArcSpatialDB system
         areas_frame = ttk.LabelFrame(main_frame, text="Map Areas", padding=10)
         areas_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        # Areas input section
-        input_frame = ttk.Frame(areas_frame)
-        input_frame.pack(fill=tk.X, pady=(0, 10))
+        # Create horizontal layout: input fields on left, listbox on right
+        areas_container = ttk.Frame(areas_frame)
+        areas_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Left side: Areas input section
+        input_frame = ttk.Frame(areas_container)
+        input_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         
         # Area input fields in a grid
-        ttk.Label(input_frame, text="X Min:").grid(row=0, column=0, padx=2, pady=2)
+        ttk.Label(input_frame, text="X Min:").grid(row=0, column=0, padx=2, pady=2, sticky=tk.W)
         self.xmin_var = tk.StringVar()
         ttk.Entry(input_frame, textvariable=self.xmin_var, width=12).grid(row=0, column=1, padx=2, pady=2)
         
-        ttk.Label(input_frame, text="Y Min:").grid(row=0, column=2, padx=2, pady=2)
+        ttk.Label(input_frame, text="Y Min:").grid(row=1, column=0, padx=2, pady=2, sticky=tk.W)
         self.ymin_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.ymin_var, width=12).grid(row=0, column=3, padx=2, pady=2)
+        ttk.Entry(input_frame, textvariable=self.ymin_var, width=12).grid(row=1, column=1, padx=2, pady=2)
         
-        ttk.Label(input_frame, text="X Max:").grid(row=1, column=0, padx=2, pady=2)
+        ttk.Label(input_frame, text="X Max:").grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
         self.xmax_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.xmax_var, width=12).grid(row=1, column=1, padx=2, pady=2)
+        ttk.Entry(input_frame, textvariable=self.xmax_var, width=12).grid(row=2, column=1, padx=2, pady=2)
         
-        ttk.Label(input_frame, text="Y Max:").grid(row=1, column=2, padx=2, pady=2)
+        ttk.Label(input_frame, text="Y Max:").grid(row=3, column=0, padx=2, pady=2, sticky=tk.W)
         self.ymax_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.ymax_var, width=12).grid(row=1, column=3, padx=2, pady=2)
+        ttk.Entry(input_frame, textvariable=self.ymax_var, width=12).grid(row=3, column=1, padx=2, pady=2)
         
-        ttk.Label(input_frame, text="Scale:").grid(row=2, column=0, padx=2, pady=2)
+        ttk.Label(input_frame, text="Scale:").grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
         self.scale_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.scale_var, width=25).grid(row=2, column=1, columnspan=2, padx=2, pady=2, sticky=tk.EW)
+        ttk.Entry(input_frame, textvariable=self.scale_var, width=25).grid(row=4, column=1, columnspan=2, padx=2, pady=2, sticky=tk.EW)
         
         # Buttons for area management
         button_frame = ttk.Frame(input_frame)
-        button_frame.grid(row=2, column=3, padx=2, pady=2)
-        ttk.Button(button_frame, text="Add Area", command=self.add_area).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="Clear", command=self.clear_area_fields).pack(side=tk.LEFT, padx=2)
+        button_frame.grid(row=5, column=0, columnspan=2, padx=2, pady=10, sticky=tk.EW)
+        ttk.Button(button_frame, text="Add Area", command=self.add_area).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="Clear", command=self.clear_area_fields).pack(side=tk.LEFT)
         
-        # Areas listbox
-        listbox_frame = ttk.Frame(areas_frame)
-        listbox_frame.pack(fill=tk.BOTH, expand=True)
+        # Right side: Areas listbox
+        listbox_frame = ttk.Frame(areas_container)
+        listbox_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         ttk.Label(listbox_frame, text="Added Areas:").pack(anchor=tk.W)
         
@@ -323,7 +378,7 @@ Part of the ArcSpatialDB system
         scrollbar = ttk.Scrollbar(list_container)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.areas_listbox = tk.Listbox(list_container, yscrollcommand=scrollbar.set, height=6)
+        self.areas_listbox = tk.Listbox(list_container, yscrollcommand=scrollbar.set, height=8)
         self.areas_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.areas_listbox.yview)
         
@@ -639,7 +694,24 @@ Part of the ArcSpatialDB system
                         shutil.copy2(image_path, dest_image_path)
                     else:  # move
                         shutil.move(image_path, dest_image_path)
-                    processed_files.append(f"Image: {new_image_name}")
+                    
+                    # Add UUID overlay to the image/PDF if enabled
+                    if self.add_uuid_var.get():
+                        uuid_text = f"Export ID: {project_uuid}"
+                        placement = self.uuid_placement_var.get()
+                        
+                        if ext.lower() == '.pdf':
+                            uuid_success = self.add_uuid_to_pdf(dest_image_path, uuid_text, placement)
+                        else:  # For image files (PNG, JPG, JPEG)
+                            uuid_success = self.add_uuid_to_image(dest_image_path, uuid_text, placement)
+                        
+                        if uuid_success:
+                            processed_files.append(f"Image: {new_image_name} (with UUID)")
+                        else:
+                            processed_files.append(f"Image: {new_image_name} (UUID overlay failed)")
+                    else:
+                        processed_files.append(f"Image: {new_image_name}")
+                        
                 except Exception as e:
                     self.status_var.set(f"❌ Failed to {operation} image file: {str(e)}")
                     success = False
@@ -672,6 +744,133 @@ Part of the ArcSpatialDB system
             
         except Exception as e:
             self.status_var.set(f"❌ File operation error: {str(e)}")
+            return False
+    
+    def add_uuid_to_image(self, image_path, uuid_text, placement):
+        """Add UUID text overlay to an image"""
+        if not PIL_AVAILABLE:
+            print("Warning: PIL not available, skipping UUID overlay on image")
+            return False
+        
+        try:
+            # Open the image
+            image = Image.open(image_path)
+            draw = ImageDraw.Draw(image)
+            
+            # Try to use a system font, fallback to default
+            try:
+                # Try different font sizes based on image size
+                font_size = max(20, min(image.width, image.height) // 50)
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except:
+                try:
+                    font = ImageFont.load_default()
+                except:
+                    # If all else fails, use basic drawing
+                    font = None
+            
+            # Get text dimensions
+            if font:
+                bbox = draw.textbbox((0, 0), uuid_text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+            else:
+                # Estimate text size for default font
+                text_width = len(uuid_text) * 8
+                text_height = 15
+            
+            # Calculate position based on placement choice
+            margin = 20
+            positions = {
+                'top_left': (margin, margin),
+                'top_right': (image.width - text_width - margin, margin),
+                'middle_left': (margin, (image.height - text_height) // 2),
+                'middle_right': (image.width - text_width - margin, (image.height - text_height) // 2),
+                'bottom_left': (margin, image.height - text_height - margin),
+                'bottom_right': (image.width - text_width - margin, image.height - text_height - margin)
+            }
+            
+            position = positions.get(placement, positions['bottom_right'])
+            
+            # Draw background rectangle for better visibility
+            bg_margin = 5
+            bg_box = [
+                position[0] - bg_margin,
+                position[1] - bg_margin,
+                position[0] + text_width + bg_margin,
+                position[1] + text_height + bg_margin
+            ]
+            draw.rectangle(bg_box, fill=(255, 255, 255, 200), outline=(0, 0, 0))
+            
+            # Draw the text
+            if font:
+                draw.text(position, uuid_text, fill=(0, 0, 0), font=font)
+            else:
+                draw.text(position, uuid_text, fill=(0, 0, 0))
+            
+            # Save the modified image
+            image.save(image_path)
+            return True
+            
+        except Exception as e:
+            print(f"Error adding UUID to image: {str(e)}")
+            return False
+    
+    def add_uuid_to_pdf(self, pdf_path, uuid_text, placement):
+        """Add UUID text overlay to a PDF using PyMuPDF"""
+        if not PYMUPDF_AVAILABLE:
+            print("Warning: PyMuPDF not available, skipping UUID overlay on PDF")
+            return False
+        
+        try:
+            # Open the PDF document
+            doc = fitz.open(pdf_path)
+            
+            # Loop through all pages in the PDF
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                page_rect = page.rect
+                
+                # Calculate position based on placement choice
+                margin = 20
+                font_size = 12
+                
+                # Estimate text dimensions (PyMuPDF will calculate exact dimensions)
+                text_rect = fitz.Rect(0, 0, 200, 20)  # Approximate size
+                
+                positions = {
+                    'top_left': fitz.Point(margin, margin + font_size),
+                    'top_right': fitz.Point(page_rect.width - 200 - margin, margin + font_size),
+                    'middle_left': fitz.Point(margin, page_rect.height / 2),
+                    'middle_right': fitz.Point(page_rect.width - 200 - margin, page_rect.height / 2),
+                    'bottom_left': fitz.Point(margin, page_rect.height - margin),
+                    'bottom_right': fitz.Point(page_rect.width - 200 - margin, page_rect.height - margin)
+                }
+                
+                position = positions.get(placement, positions['bottom_right'])
+                
+                # Create a text rectangle at the specified position
+                text_rect = fitz.Rect(position.x, position.y - font_size, 
+                                    position.x + 200, position.y + 5)
+                
+                # Add background rectangle for better visibility
+                bg_rect = fitz.Rect(text_rect.x0 - 5, text_rect.y0 - 5, 
+                                  text_rect.x1 + 5, text_rect.y1 + 5)
+                page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1), width=1)  # White background
+                page.draw_rect(bg_rect, color=(0, 0, 0), width=1)  # Black border
+                
+                # Insert the text
+                page.insert_text(position, uuid_text, fontsize=font_size, 
+                               color=(0, 0, 0))  # Black text
+            
+            # Save the modified PDF
+            doc.save(pdf_path, incremental=True, encryption=fitz.PDF_ENCRYPT_KEEP)
+            doc.close()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error adding UUID to PDF: {str(e)}")
             return False
 
 
