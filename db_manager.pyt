@@ -345,7 +345,7 @@ class ExportLayoutTool(object):
                 messages.addMessage(f"  Top Right  (XMax, YMax): ({x_max_utm}, {y_max_utm})")
                 scale = mf.camera.scale
                 messages.addMessage(f"Map Frame '{mf.name}' Scale: 1:{int(scale)}")
-                scale_str = f"Scale: 1:{int(scale)}"
+                scale_str = f"1:{int(scale)}"
                 info_dict = {
                     "scale": scale_str,
                     "x_min": int(x_min_utm),
