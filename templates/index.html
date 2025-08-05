@@ -942,7 +942,7 @@
                   <td>{{ proj.file_location }}</td>
                   <td>{{ proj.paper_size }}</td>
                   <td>{{ proj.description }}</td>
-                  <td>{{ proj.get('associated_scales', 'N/A') }}</td>
+                  <td>{{ proj.get('associated_scales', 'N/A') if proj.get('associated_scales') else 'N/A' }}</td>
                   <td class="actions-column">
                     {% if proj.view_file_path %}
                       <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
@@ -996,7 +996,7 @@
                     <td>{{ proj.file_location }}</td>
                     <td>{{ proj.paper_size }}</td>
                     <td>{{ proj.description }}</td>
-				<td>{{ proj.get('associated_scales', 'N/A') }}</td> 
+				<td>{{ proj.get('associated_scales', 'N/A') if proj.get('associated_scales') else 'N/A' }}</td> 
                     <td class="actions-column">
                       {% if proj.view_file_path %}
                         <a href="#" onclick="showFileModal('{{ url_for('view_file', rel_path=proj.view_file_path) }}','{{ proj.view_file_type }}'); return false">View</a>
@@ -1069,7 +1069,7 @@
                   <td>{{ area.ymin }}</td>
                   <td>{{ area.xmax }}</td>
                   <td>{{ area.ymax }}</td>
-                  <td>{{ area.scale.replace('Scale:', '').strip() if area.scale else '' }}</td>
+                  <td>{{ area.scale|string if area.scale else '' }}</td>
                   <td class="actions-column">
                     <a href="#" onclick="showFileModalOrNoFiles({{ area.project_all_files|tojson|safe }}); return false">View Project</a>
                     <a href="#" onclick="copyPath('{{ area.project_file_location.replace('\\', '\\\\')|safe }}'); return false" style="background-color: #27ae60;">Copy Project Path</a>
