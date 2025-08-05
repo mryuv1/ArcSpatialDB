@@ -459,11 +459,35 @@ Part of the ArcSpatialDB system
         """Add area to the areas list"""
         try:
             # Validate input
-            xmin = float(self.xmin_var.get().strip())
-            ymin = float(self.ymin_var.get().strip())
-            xmax = float(self.xmax_var.get().strip())
-            ymax = float(self.ymax_var.get().strip())
+            xmin_str = self.xmin_var.get().strip()
+            ymin_str = self.ymin_var.get().strip()
+            xmax_str = self.xmax_var.get().strip()
+            ymax_str = self.ymax_var.get().strip()
             scale = self.scale_var.get().strip()
+            
+            # Check if coordinate fields are empty
+            if not xmin_str or not ymin_str or not xmax_str or not ymax_str:
+                messagebox.showerror("Error", "All coordinate fields (X Min, Y Min, X Max, Y Max) are required")
+                return
+            
+            # Convert to numbers and validate
+            try:
+                xmin = float(xmin_str)
+                ymin = float(ymin_str)
+                xmax = float(xmax_str)
+                ymax = float(ymax_str)
+            except ValueError:
+                messagebox.showerror("Error", "All coordinate values must be valid numbers (integers or decimals)")
+                return
+            
+            # Validate min/max relationships
+            if xmin >= xmax:
+                messagebox.showerror("Error", "X Min must be less than X Max")
+                return
+            
+            if ymin >= ymax:
+                messagebox.showerror("Error", "Y Min must be less than Y Max")
+                return
             
             if not scale:
                 messagebox.showerror("Error", "Scale cannot be empty")
