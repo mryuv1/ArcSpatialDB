@@ -528,6 +528,16 @@
         <div id="downloadStatus" class="download-status"></div>
     </div>
     
+    <!-- Download project_gui.py button -->
+    <div class="download-section">
+        <h3>Manual Project Entry GUI</h3>
+        <p>Download the standalone GUI application for manually adding projects to the database:</p>
+        <button type="button" id="downloadProjectGuiBtn" class="download-btn">
+            📥 Download project_gui.py
+        </button>
+        <div id="downloadProjectGuiStatus" class="download-status"></div>
+    </div>
+
     <h2>Project Search</h2>
     <form method="post" id="searchForm">
       <label>Bottom Left (XMin/YMin): <input name="bottom_left" type="text" placeholder="e.g., 10.5/20.1" value="{{ request.form.bottom_left if request.form.bottom_left else '' }}"></label>
@@ -752,6 +762,58 @@
             }
     }
 
+    async function downloadProjectGui() {
+      const downloadBtn = document.getElementById('downloadProjectGuiBtn');
+      const statusDiv = document.getElementById('downloadProjectGuiStatus');
+      
+      if (downloadBtn) {
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = '⏳ Downloading...';
+      }
+      
+      if (statusDiv) {
+        statusDiv.className = 'download-status';
+        statusDiv.style.display = 'none';
+      }
+      
+      try {
+        const response = await fetch('/download/project_gui.py');
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'project_gui.py';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          
+          if (statusDiv) {
+            statusDiv.textContent = '✅ Download completed successfully!';
+            statusDiv.className = 'download-status success';
+            statusDiv.style.display = 'block';
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+      } catch (error) {
+        console.error('Download failed:', error);
+        if (statusDiv) {
+          statusDiv.textContent = `❌ Download failed: ${error.message}`;
+          statusDiv.className = 'download-status error';
+          statusDiv.style.display = 'block';
+        }
+      } finally {
+        if (downloadBtn) {
+          downloadBtn.disabled = false;
+          downloadBtn.textContent = '📥 Download project_gui.py';
+        }
+      }
+    }
+
     // Function to get a URL parameter
     function getUrlParameter(name) {
         name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
@@ -788,6 +850,11 @@
       const downloadDbManagerBtn = document.getElementById('downloadDbManagerBtn');
       if (downloadDbManagerBtn) {
         downloadDbManagerBtn.addEventListener('click', downloadDbManager);
+      }
+      
+      const downloadProjectGuiBtn = document.getElementById('downloadProjectGuiBtn');
+      if (downloadProjectGuiBtn) {
+        downloadProjectGuiBtn.addEventListener('click', downloadProjectGui);
       }
       
       // Completely disable user name field manipulation to preserve partial search

@@ -437,6 +437,23 @@ def download_db_manager():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/download/project_gui.py')
+def download_project_gui():
+    """Download the project_gui.py file"""
+    try:
+        project_gui_path = os.path.join(PROJECT_ROOT, 'project_gui.py')
+        if os.path.exists(project_gui_path):
+            return send_file(
+                project_gui_path,
+                as_attachment=True,
+                download_name='project_gui.py',
+                mimetype='text/plain'
+            )
+        else:
+            return jsonify({"error": "project_gui.py file not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/get_project/<uuid>', methods=['GET'])
 def api_get_project(uuid):
     try:
