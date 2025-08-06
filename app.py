@@ -5,8 +5,80 @@ import glob2
 from datetime import datetime
 import shutil
 import uuid
+import math
+
+# Add pyproj for coordinate transformations
+try:
+    from pyproj import Transformer, CRS
+    PYPROJ_AVAILABLE = True
+except ImportError:
+    PYPROJ_AVAILABLE = False
+    print("⚠️  pyproj not available. Coordinate transformation will be disabled.")
+    print("   Install with: pip install pyproj")
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+def transform_to_utm(x, y, source_crs=None):
+    """
+    Transform coordinates to UTM format using pyproj.
+    Similar to convert_any_to_wgs84_utm in db_manager.pyt but using pyproj.
+    
+    Args:
+        x, y: Input coordinates
+        source_crs: Source coordinate reference system (EPSG code or CRS string)
+                   If None, assumes WGS84 Geographic (EPSG:4326)
+    
+    Returns:
+        (x_utm, y_utm, utm_epsg) or (x, y, None) if transformation fails
+    """
+    if not PYPROJ_AVAILABLE:
+        return x, y, None
+    
+    try:
+        # Default to WGS84 Geographic if no source CRS provided
+        if source_crs is None:
+            source_crs = "EPSG:4326"
+        
+        # Create transformer from source to WGS84 Geographic
+        transformer_to_wgs84 = Transformer.from_crs(source_crs, "EPSG:4326", always_xy=True)
+        
+        # Transform to WGS84 Geographic
+        lon, lat = transformer_to_wgs84.transform(x, y)
+        
+        # Calculate UTM zone and hemisphere (same logic as db_manager.pyt)
+        zone_number = int((lon + 180) / 6) + 1
+        is_northern = lat >= 0
+        utm_epsg = 32600 + zone_number if is_northern else 32700 + zone_number
+        
+        # Create transformer from WGS84 to UTM
+        transformer_to_utm = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
+        
+        # Transform to UTM
+        x_utm, y_utm = transformer_to_utm.transform(lon, lat)
+        
+        return x_utm, y_utm, utm_epsg
+        
+    except Exception as e:
+        print(f"⚠️  Coordinate transformation failed: {e}")
+        return x, y, None
+
+def dms_to_decimal(degrees, minutes, seconds, direction):
+    """
+    Convert degrees, minutes, seconds to decimal degrees.
+    
+    Args:
+        degrees, minutes, seconds: DMS values
+        direction: 'N', 'S', 'E', 'W'
+    
+    Returns:
+        Decimal degrees
+    """
+    decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+    
+    if direction in ['S', 'W']:
+        decimal = -decimal
+    
+    return decimal
 
 def row_to_dict(row):
     """
@@ -195,7 +267,8 @@ def parse_point(s):
     - WGS84 UTM 36N 735712 E / 3563829 N
     - WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N
     
-    Returns: (x, y) if successful, or (None, error_message) if failed
+    Returns: (x_utm, y_utm) if successful, or (None, error_message) if failed
+    All coordinates are transformed to UTM format.
     """
     try:
         s = str(s).strip()
@@ -215,6 +288,7 @@ def parse_point(s):
                     zone = match.group(1)
                     easting = float(match.group(2))
                     northing = float(match.group(3))
+                    # Already in UTM format, return as-is
                     return (easting, northing), None
                 except ValueError as e:
                     return None, f"Invalid UTM coordinates in '{s}': {str(e)}"
@@ -233,23 +307,20 @@ def parse_point(s):
                     lon_deg, lon_min, lon_sec = float(match.group(1)), float(match.group(2)), float(match.group(3))
                     lat_deg, lat_min, lat_sec = float(match.group(4)), float(match.group(5)), float(match.group(6))
                     
-                    # Check if longitude is East or West
-                    if 'W' in s.upper():
-                        lon_deg = -lon_deg
-                    if 'S' in s.upper():
-                        lat_deg = -lat_deg
+                    # Convert to decimal degrees using helper function
+                    lon_decimal = dms_to_decimal(lon_deg, lon_min, lon_sec, 'E' if 'E' in s.upper() else 'W')
+                    lat_decimal = dms_to_decimal(lat_deg, lat_min, lat_sec, 'N' if 'N' in s.upper() else 'S')
                     
-                    # Convert to decimal degrees
-                    lon_decimal = lon_deg + (lon_min / 60) + (lon_sec / 3600)
-                    lat_decimal = lat_deg + (lat_min / 60) + (lat_sec / 3600)
-                    
-                    return (lon_decimal, lat_decimal), None
+                    # Transform to UTM
+                    x_utm, y_utm, utm_epsg = transform_to_utm(lon_decimal, lat_decimal, "EPSG:4326")
+                    return (x_utm, y_utm), None
                 except ValueError as e:
                     return None, f"Invalid geographic coordinates in '{s}': {str(e)}"
             else:
                 return None, f"Invalid WGS84 Geographic format. Expected: 'WGS84 Geo [deg]° [min]' [sec]\" [E/W] / [deg]° [min]' [sec]\" [N/S]'"
         
         # Handle simple WGS84 and other coordinate system prefixes
+        source_crs = None
         if s.upper().startswith(('WGS', 'EPSG', 'UTM', 'GEO', 'PROJ')):
             # Extract coordinates after the prefix
             # Look for common patterns like "WGS84: 123.456, 789.012" or "UTM 36N: 123456, 789012"
@@ -257,6 +328,24 @@ def parse_point(s):
             # Match coordinates after any prefix
             coord_match = re.search(r'[:\s]+([-\d.,\s]+)$', s)
             if coord_match:
+                # Determine source CRS from prefix
+                if s.upper().startswith('WGS84'):
+                    source_crs = "EPSG:4326"  # WGS84 Geographic
+                elif s.upper().startswith('EPSG:'):
+                    # Extract EPSG code
+                    epsg_match = re.search(r'EPSG:(\d+)', s, re.IGNORECASE)
+                    if epsg_match:
+                        source_crs = f"EPSG:{epsg_match.group(1)}"
+                elif s.upper().startswith('UTM'):
+                    # Extract UTM zone
+                    utm_match = re.search(r'UTM\s*(\d+[NS])', s, re.IGNORECASE)
+                    if utm_match:
+                        zone = utm_match.group(1)
+                        zone_num = int(zone[:-1])
+                        is_north = zone[-1].upper() == 'N'
+                        utm_epsg = 32600 + zone_num if is_north else 32700 + zone_num
+                        source_crs = f"EPSG:{utm_epsg}"
+                
                 s = coord_match.group(1).strip()
             else:
                 return None, f"Invalid coordinate system format. Expected: '[SYSTEM]: [x], [y]' or '[SYSTEM] [x], [y]'"
@@ -275,7 +364,10 @@ def parse_point(s):
                     x_str, y_str = parts[0].strip(), parts[1].strip()
                     # Try to convert to float
                     try:
-                        return (float(x_str), float(y_str)), None
+                        x, y = float(x_str), float(y_str)
+                        # Transform to UTM
+                        x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                        return (x_utm, y_utm), None
                     except ValueError:
                         continue
         
@@ -284,7 +376,10 @@ def parse_point(s):
             parts = s.split()
             if len(parts) >= 2:
                 try:
-                    return (float(parts[0]), float(parts[1])), None
+                    x, y = float(parts[0]), float(parts[1])
+                    # Transform to UTM
+                    x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                    return (x_utm, y_utm), None
                 except ValueError:
                     pass
         
@@ -295,7 +390,10 @@ def parse_point(s):
         match = re.search(coord_pattern, s)
         if match:
             try:
-                return (float(match.group(1)), float(match.group(2))), None
+                x, y = float(match.group(1)), float(match.group(2))
+                # Transform to UTM
+                x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                return (x_utm, y_utm), None
             except ValueError:
                 pass
         
@@ -304,7 +402,10 @@ def parse_point(s):
         match = re.search(space_pattern, s)
         if match:
             try:
-                return (float(match.group(1)), float(match.group(2))), None
+                x, y = float(match.group(1)), float(match.group(2))
+                # Transform to UTM
+                x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                return (x_utm, y_utm), None
             except ValueError:
                 pass
         
@@ -400,12 +501,23 @@ def api_add_project():
                     if isinstance(scale_value, (int, float)):
                         scale_value = f"1:{int(scale_value)}"
                     
+                    # Transform coordinates to UTM if they're not already
+                    xmin, ymin, xmax, ymax = area_data['xmin'], area_data['ymin'], area_data['xmax'], area_data['ymax']
+                    
+                    # Check if coordinates are already in UTM format (large numbers)
+                    # If they look like geographic coordinates (small numbers), transform them
+                    if abs(xmin) < 180 and abs(ymin) < 90 and abs(xmax) < 180 and abs(ymax) < 90:
+                        # Likely geographic coordinates, transform to UTM
+                        xmin_utm, ymin_utm, utm_epsg = transform_to_utm(xmin, ymin)
+                        xmax_utm, ymax_utm, _ = transform_to_utm(xmax, ymax)
+                        xmin, ymin, xmax, ymax = xmin_utm, ymin_utm, xmax_utm, ymax_utm
+                    
                     conn.execute(areas_table.insert().values(
                         project_id=generated_uuid,
-                        xmin=area_data['xmin'],
-                        ymin=area_data['ymin'],
-                        xmax=area_data['xmax'],
-                        ymax=area_data['ymax'],
+                        xmin=xmin,
+                        ymin=ymin,
+                        xmax=xmax,
+                        ymax=ymax,
                         scale=scale_value
                     ))
         
