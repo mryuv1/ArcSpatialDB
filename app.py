@@ -20,8 +20,8 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 def transform_to_utm(x, y, source_crs=None):
     """
-    Transform coordinates to UTM format using pyproj.
-    Similar to convert_any_to_wgs84_utm in db_manager.pyt but using pyproj.
+    Transform coordinates to WGS84 UTM Zone 36N (EPSG:32636) format using pyproj.
+    All coordinates are transformed to the same UTM zone for consistency.
     
     Args:
         x, y: Input coordinates
@@ -45,15 +45,13 @@ def transform_to_utm(x, y, source_crs=None):
         # Transform to WGS84 Geographic
         lon, lat = transformer_to_wgs84.transform(x, y)
         
-        # Calculate UTM zone and hemisphere (same logic as db_manager.pyt)
-        zone_number = int((lon + 180) / 6) + 1
-        is_northern = lat >= 0
-        utm_epsg = 32600 + zone_number if is_northern else 32700 + zone_number
+        # Always use WGS84 UTM Zone 36N (EPSG:32636) as the reference
+        utm_epsg = 32636  # WGS84 UTM Zone 36N
         
-        # Create transformer from WGS84 to UTM
+        # Create transformer from WGS84 to UTM Zone 36N
         transformer_to_utm = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
         
-        # Transform to UTM
+        # Transform to UTM Zone 36N
         x_utm, y_utm = transformer_to_utm.transform(lon, lat)
         
         return x_utm, y_utm, utm_epsg
