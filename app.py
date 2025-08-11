@@ -18,6 +18,31 @@ except ImportError:
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
+def safe_relpath(path, start=None):
+    """
+    Safely calculate relative path, handling cross-drive issues on Windows.
+    If paths are on different drives, return a special marker for absolute paths.
+    """
+    try:
+        if start is None:
+            start = os.path.abspath('.')
+        return os.path.relpath(path, start)
+    except ValueError:
+        # Cross-drive issue, return the absolute path with a special prefix
+        # This will be handled specially in the view_file route
+        return f"ABS:{os.path.abspath(path)}"
+
+def file_exists_check(file_path):
+    """
+    Check if a file exists and is accessible.
+    Returns True if file exists and is readable, False otherwise.
+    """
+    try:
+        return os.path.exists(file_path) and os.path.isfile(file_path) and os.access(file_path, os.R_OK)
+    except Exception as e:
+        print(f"Error checking file existence for {file_path}: {e}")
+        return False
+
 def transform_to_utm(x, y, source_crs=None):
     """
     Transform coordinates to WGS84 UTM Zone 36N (EPSG:32636) format using pyproj.
@@ -820,26 +845,29 @@ def index():
                 for ext, ftype in file_types:
                     pattern = os.path.join(abs_path, f"*.{ext}")
                     files = glob2.glob(pattern)
-                    for f in files:
+                for f in files:
+                    if file_exists_check(f):  # Only process files that actually exist and are readable
                         ctime = os.path.getctime(f)
                         file_info = {
                             'path': f,
                             'type': ftype,
                             'ctime': ctime,
                             'filename': os.path.basename(f),
-                            'rel_path': os.path.relpath(f, os.path.abspath('.'))
+                            'rel_path': safe_relpath(f, os.path.abspath('.'))
                         }
                         all_files.append(file_info)
 
                         if (most_recent is None) or (ctime > most_recent['ctime']):
                             most_recent = file_info
-
+                    else:
+                        print(f"Skipping inaccessible file: {f}")
+                
                 all_files.sort(key=lambda x: x['ctime'], reverse=True)
                 proj['all_files'] = all_files
                 proj['file_count'] = len(all_files)
 
                 if most_recent:
-                    proj['view_file_path'] = os.path.relpath(most_recent['path'], PROJECT_ROOT)
+                    proj['view_file_path'] = safe_relpath(most_recent['path'], PROJECT_ROOT)
                     proj['view_file_type'] = most_recent['type']
                 else:
                     proj['view_file_path'] = None
@@ -1031,19 +1059,22 @@ def index():
                 pattern = os.path.join(abs_path, f"*.{ext}")
                 files = glob2.glob(pattern)
                 for f in files:
-                    ctime = os.path.getctime(f)
-                    file_info = {
-                        'path': f,
-                        'type': ftype,
-                        'ctime': ctime,
-                        'filename': os.path.basename(f),
-                        'rel_path': os.path.relpath(f, os.path.abspath('.'))
-                    }
-                    all_files.append(file_info)
+                    if file_exists_check(f):  # Only process files that actually exist and are readable
+                        ctime = os.path.getctime(f)
+                        file_info = {
+                            'path': f,
+                            'type': ftype,
+                            'ctime': ctime,
+                            'filename': os.path.basename(f),
+                            'rel_path': safe_relpath(f, os.path.abspath('.'))
+                        }
+                        all_files.append(file_info)
 
-                    # Track the most recent file for the single "View" option
-                    if (most_recent is None) or (ctime > most_recent['ctime']):
-                        most_recent = file_info
+                        # Track the most recent file for the single "View" option
+                        if (most_recent is None) or (ctime > most_recent['ctime']):
+                            most_recent = file_info
+                    else:
+                        print(f"Skipping inaccessible project file: {f}")
 
             # Sort files by creation time (newest first)
             all_files.sort(key=lambda x: x['ctime'], reverse=True)
@@ -1051,11 +1082,14 @@ def index():
             proj_dict['file_count'] = len(all_files)
 
             if most_recent:
-                proj_dict['view_file_path'] = os.path.relpath(most_recent['path'], PROJECT_ROOT)
+                proj_dict['view_file_path'] = safe_relpath(most_recent['path'], PROJECT_ROOT)
                 proj_dict['view_file_type'] = most_recent['type']
+                # Debug info
+                print(f"Project {proj_dict.get('project_name', 'Unknown')}: Found file {most_recent['filename']}, path: {proj_dict['view_file_path']}")
             else:
                 proj_dict['view_file_path'] = None
                 proj_dict['view_file_type'] = None
+                print(f"Project {proj_dict.get('project_name', 'Unknown')}: No files found in {abs_path}")
 
             projects_list.append(proj_dict)
 
@@ -1098,19 +1132,22 @@ def index():
                 pattern = os.path.join(abs_path, f"*.{ext}")
                 files = glob2.glob(pattern)
                 for f in files:
-                    ctime = os.path.getctime(f)
-                    file_info = {
-                        'path': f,
-                        'type': ftype,
-                        'ctime': ctime,
-                        'filename': os.path.basename(f),
-                        'rel_path': os.path.relpath(f, os.path.abspath('.'))
-                    }
-                    all_files.append(file_info)
+                    if file_exists_check(f):  # Only process files that actually exist and are readable
+                        ctime = os.path.getctime(f)
+                        file_info = {
+                            'path': f,
+                            'type': ftype,
+                            'ctime': ctime,
+                            'filename': os.path.basename(f),
+                            'rel_path': safe_relpath(f, os.path.abspath('.'))
+                        }
+                        all_files.append(file_info)
 
-                    # Track the most recent file for the single "View" option
-                    if (most_recent is None) or (ctime > most_recent['ctime']):
-                        most_recent = file_info
+                        # Track the most recent file for the single "View" option
+                        if (most_recent is None) or (ctime > most_recent['ctime']):
+                            most_recent = file_info
+                    else:
+                        print(f"Skipping inaccessible area file: {f}")
 
             # Sort files by creation time (newest first)
             all_files.sort(key=lambda x: x['ctime'], reverse=True)
@@ -1151,14 +1188,30 @@ def index():
 @app.route('/view_file/<path:rel_path>')
 def view_file(rel_path):
     import os
-    abs_path = os.path.abspath(os.path.join(PROJECT_ROOT, rel_path))
-    print(f"Requested: {abs_path}")
-    print(f"Project root: {PROJECT_ROOT}")
-    print(f"Startswith: {abs_path.startswith(PROJECT_ROOT)}")
-    # Security: Only allow files inside your project directory
-    if not abs_path.startswith(PROJECT_ROOT):
-        return "Access denied", 403
-    return send_file(abs_path)
+    
+    # Handle absolute paths with ABS: prefix (for cross-drive scenarios)
+    if rel_path.startswith('ABS:'):
+        # Remove the ABS: prefix and use the absolute path directly
+        abs_path = rel_path[4:]  # Remove 'ABS:' prefix
+        print(f"Using absolute path: {abs_path}")
+    else:
+        # Handle relative paths normally
+        abs_path = os.path.abspath(os.path.join(PROJECT_ROOT, rel_path))
+        print(f"Using relative path joined with PROJECT_ROOT: {abs_path}")
+    
+    print(f"Final path: {abs_path}")
+    print(f"File exists: {os.path.exists(abs_path)}")
+    
+    # Check if file exists
+    if not os.path.exists(abs_path):
+        return "File not found", 404
+    
+    # Serve the file
+    try:
+        return send_file(abs_path)
+    except Exception as e:
+        print(f"Error serving file: {e}")
+        return f"Error accessing file: {str(e)}", 500
 
 @app.route('/delete_project/<uuid>', methods=['POST'])
 def delete_project(uuid):

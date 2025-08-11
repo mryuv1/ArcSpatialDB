@@ -11,6 +11,23 @@ import getpass
 import os
 import sys
 import shutil
+import subprocess
+import platform
+
+# Import parse_point function from app.py
+try:
+    from app import parse_point
+except ImportError:
+    print("Warning: Could not import parse_point from app.py")
+    # Fallback function if import fails
+    def parse_point(s):
+        parts = s.strip().replace(',', '/').split('/')
+        if len(parts) == 2:
+            try:
+                return (float(parts[0]), float(parts[1])), None
+            except ValueError:
+                return None, "Invalid coordinate format"
+        return None, "Invalid coordinate format"
 try:
     from PIL import Image, ImageDraw, ImageFont
     PIL_AVAILABLE = True
@@ -21,6 +38,30 @@ try:
     PYMUPDF_AVAILABLE = True
 except ImportError:
     PYMUPDF_AVAILABLE = False
+
+
+def get_user_full_name():
+    """Get the user's full name using platform-specific methods"""
+    system = platform.system()
+    
+    if system == "Windows":
+        try:
+            username = os.getlogin()
+            domain = os.environ.get("USERDOMAIN", "")
+            command = f'wmic useraccount where "name=\'{username}\' and domain=\'{domain}\'" get fullname'
+            output = subprocess.check_output(command, shell=True).decode('cp862').splitlines()
+            lines = [line.strip() for line in output if line.strip()]
+            return lines[1] if len(lines) > 1 else getpass.getuser()
+        except Exception as e:
+            return getpass.getuser()
+    else:
+        try:
+            import pwd
+            username = getpass.getuser()
+            pw = pwd.getpwnam(username)
+            return pw.pw_gecos.split(',')[0]
+        except Exception as e:
+            return getpass.getuser()
 
 class ProjectGUI:
     def __init__(self, root):
@@ -105,12 +146,18 @@ After successfully adding the project to the database:
 
 You can add multiple map areas for each project (at least one is required):
 
-• X Min/Max: Minimum and maximum X coordinates (in UTM or appropriate projection)
-• Y Min/Max: Minimum and maximum Y coordinates (in UTM or appropriate projection)
-• Scale: Enter scale information (e.g., "Scale: 1:1000")
+• Bottom Left: Enter bottom-left coordinates in supported formats (X/Y, X,Y, X:Y, WGS84 UTM, etc.)
+• Top Right: Enter top-right coordinates in supported formats (X/Y, X,Y, X:Y, WGS84 UTM, etc.)
+• Scale: Enter scale information (e.g., "1:1000")
+
+Supported coordinate formats:
+- Simple: 123456/3456789 or 123456,3456789
+- WGS84 UTM: "WGS84 UTM 36N 735712 E / 3563829 N"
+- Geographic: "WGS84 Geo 35° 30' 0.11\" E / 32° 11' 9.88\" N"
+- With prefixes: UTM 36N: 735712/3563829
 
 Steps to add areas:
-1. Fill in the coordinate fields
+1. Fill in the Bottom Left and Top Right coordinate fields
 2. Click "Add Area" to add to the list
 3. Repeat for multiple areas
 4. Use "Remove Selected Area" to delete areas from the list
@@ -132,7 +179,7 @@ Steps to add areas:
 
 • Project Image accepts: PNG, JPEG, PDF files
 • Project File accepts: .aprx (ArcGIS), .blaze_proj files
-• All coordinate values should be numeric
+• Coordinates support various formats: X/Y, X,Y, WGS84 UTM, Geographic, etc.
 • Date format must be DD-MM-YY (e.g., 05-08-25)
 • Scale field is flexible - you can enter just numbers or descriptive text
 • The Flask server must be running for database submission to work
@@ -141,7 +188,7 @@ Steps to add areas:
 === TROUBLESHOOTING ===
 
 • "Connection failed" → Ensure Flask server is running at the configured URL
-• "Invalid coordinate format" → Check that coordinates are numeric
+• "Invalid coordinate format" → Use supported formats: X/Y, X,Y, WGS84 UTM, Geographic, etc.
 • "Date format error" → Use DD-MM-YY format
 • "Missing fields" → Fill in all required fields marked as (Required)
 • "File operation failed" → Check file permissions and disk space
@@ -339,29 +386,25 @@ Part of the ArcSpatialDB system
         input_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         
         # Area input fields in a grid
-        ttk.Label(input_frame, text="X Min:").grid(row=0, column=0, padx=2, pady=2, sticky=tk.W)
-        self.xmin_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.xmin_var, width=12).grid(row=0, column=1, padx=2, pady=2)
+        ttk.Label(input_frame, text="Bottom Left (X,Y):").grid(row=0, column=0, padx=2, pady=2, sticky=tk.W)
+        self.bottom_left_var = tk.StringVar()
+        ttk.Entry(input_frame, textvariable=self.bottom_left_var, width=25).grid(row=0, column=1, padx=2, pady=2, columnspan=2, sticky=tk.EW)
         
-        ttk.Label(input_frame, text="Y Min:").grid(row=1, column=0, padx=2, pady=2, sticky=tk.W)
-        self.ymin_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.ymin_var, width=12).grid(row=1, column=1, padx=2, pady=2)
+        ttk.Label(input_frame, text="Top Right (X,Y):").grid(row=1, column=0, padx=2, pady=2, sticky=tk.W)
+        self.top_right_var = tk.StringVar()
+        ttk.Entry(input_frame, textvariable=self.top_right_var, width=25).grid(row=1, column=1, padx=2, pady=2, columnspan=2, sticky=tk.EW)
         
-        ttk.Label(input_frame, text="X Max:").grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
-        self.xmax_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.xmax_var, width=12).grid(row=2, column=1, padx=2, pady=2)
+        # Add help text for coordinate formats
+        help_text = "Supported formats: X/Y, X,Y, X:Y, WGS84 UTM, etc."
+        ttk.Label(input_frame, text=help_text, font=("TkDefaultFont", 8), foreground="gray").grid(row=2, column=0, columnspan=3, padx=2, pady=(0, 5), sticky=tk.W)
         
-        ttk.Label(input_frame, text="Y Max:").grid(row=3, column=0, padx=2, pady=2, sticky=tk.W)
-        self.ymax_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.ymax_var, width=12).grid(row=3, column=1, padx=2, pady=2)
-        
-        ttk.Label(input_frame, text="Scale:").grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
+        ttk.Label(input_frame, text="Scale:").grid(row=3, column=0, padx=2, pady=2, sticky=tk.W)
         self.scale_var = tk.StringVar()
-        ttk.Entry(input_frame, textvariable=self.scale_var, width=25).grid(row=4, column=1, columnspan=2, padx=2, pady=2, sticky=tk.EW)
+        ttk.Entry(input_frame, textvariable=self.scale_var, width=25).grid(row=3, column=1, columnspan=2, padx=2, pady=2, sticky=tk.EW)
         
         # Buttons for area management
         button_frame = ttk.Frame(input_frame)
-        button_frame.grid(row=5, column=0, columnspan=2, padx=2, pady=10, sticky=tk.EW)
+        button_frame.grid(row=4, column=0, columnspan=3, padx=2, pady=10, sticky=tk.EW)
         ttk.Button(button_frame, text="Add Area", command=self.add_area).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="Clear", command=self.clear_area_fields).pack(side=tk.LEFT)
         
@@ -385,6 +428,9 @@ Part of the ArcSpatialDB system
         # Remove area button
         ttk.Button(listbox_frame, text="Remove Selected Area", command=self.remove_area).pack(pady=5)
         
+        # Configure input_frame column weights
+        input_frame.columnconfigure(1, weight=1)
+        
         # Submit and Status Section
         submit_frame = ttk.Frame(main_frame)
         submit_frame.pack(fill=tk.X, pady=(0, 10))
@@ -404,7 +450,7 @@ Part of the ArcSpatialDB system
         """Pre-fill some default values"""
         # Set current user
         try:
-            self.user_name_var.set(getpass.getuser())
+            self.user_name_var.set(get_user_full_name())
         except:
             self.user_name_var.set("")
         
@@ -458,35 +504,42 @@ Part of the ArcSpatialDB system
     def add_area(self):
         """Add area to the areas list"""
         try:
-            # Validate input
-            xmin_str = self.xmin_var.get().strip()
-            ymin_str = self.ymin_var.get().strip()
-            xmax_str = self.xmax_var.get().strip()
-            ymax_str = self.ymax_var.get().strip()
+            # Get input values
+            bottom_left_str = self.bottom_left_var.get().strip()
+            top_right_str = self.top_right_var.get().strip()
             scale = self.scale_var.get().strip()
             
             # Check if coordinate fields are empty
-            if not xmin_str or not ymin_str or not xmax_str or not ymax_str:
-                messagebox.showerror("Error", "All coordinate fields (X Min, Y Min, X Max, Y Max) are required")
+            if not bottom_left_str or not top_right_str:
+                messagebox.showerror("Error", "Both Bottom Left and Top Right coordinates are required")
                 return
             
-            # Convert to numbers and validate
-            try:
-                xmin = float(xmin_str)
-                ymin = float(ymin_str)
-                xmax = float(xmax_str)
-                ymax = float(ymax_str)
-            except ValueError:
-                messagebox.showerror("Error", "All coordinate values must be valid numbers (integers or decimals)")
+            # Parse coordinates using parse_point function from app.py
+            bl_result = parse_point(bottom_left_str)
+            tr_result = parse_point(top_right_str)
+            
+            # Check for parsing errors
+            if bl_result[1] is not None:  # Error in bottom_left
+                messagebox.showerror("Error", f"Bottom Left coordinate error: {bl_result[1]}")
                 return
+            elif tr_result[1] is not None:  # Error in top_right
+                messagebox.showerror("Error", f"Top Right coordinate error: {tr_result[1]}")
+                return
+            elif not bl_result[0] or not tr_result[0]:  # No coordinates returned
+                messagebox.showerror("Error", "Invalid coordinate format. Please use formats like: X/Y, X,Y, X:Y, etc.")
+                return
+            
+            # Extract coordinates
+            xmin, ymin = bl_result[0]
+            xmax, ymax = tr_result[0]
             
             # Validate min/max relationships
             if xmin >= xmax:
-                messagebox.showerror("Error", "X Min must be less than X Max")
+                messagebox.showerror("Error", "Bottom Left X must be less than Top Right X")
                 return
             
             if ymin >= ymax:
-                messagebox.showerror("Error", "Y Min must be less than Y Max")
+                messagebox.showerror("Error", "Bottom Left Y must be less than Top Right Y")
                 return
             
             if not scale:
@@ -535,8 +588,6 @@ Part of the ArcSpatialDB system
             
             self.status_var.set(f"Added area {len(self.areas_data)}. Ready to add more areas or submit project.")
             
-        except ValueError as e:
-            messagebox.showerror("Error", "Please enter valid numeric values for coordinates")
         except Exception as e:
             messagebox.showerror("Error", f"Error adding area: {str(e)}")
     
@@ -553,10 +604,8 @@ Part of the ArcSpatialDB system
     
     def clear_area_fields(self):
         """Clear area input fields"""
-        self.xmin_var.set("")
-        self.ymin_var.set("")
-        self.xmax_var.set("")
-        self.ymax_var.set("")
+        self.bottom_left_var.set("")
+        self.top_right_var.set("")
         # Don't clear scale as it's often the same for multiple areas
     
     def clear_all_fields(self):
@@ -633,18 +682,20 @@ Part of the ArcSpatialDB system
         if not self.validate_inputs():
             return
         
+        # Calculate the actual file location (project folder inside output location)
+        project_name = self.project_name_var.get().strip()
+        output_location = os.path.normpath(self.output_location_var.get().strip())
+        actual_file_location = os.path.normpath(os.path.join(output_location, project_name))
+        
         # Prepare payload
         payload = {
-            "project_name": self.project_name_var.get().strip(),
+            "project_name": project_name,
             "user_name": self.user_name_var.get().strip(),
             "date": self.date_var.get().strip(),
-            "file_location": self.output_location_var.get().strip(),  # Using output location for API compatibility
+            "file_location": actual_file_location,  # Use the actual project folder path
             "paper_size": self.paper_size_var.get().strip(),
             "description": self.description_var.get().strip(),
             "areas": self.areas_data,
-            "project_image": self.project_image_var.get().strip(),
-            "project_file": self.project_file_var.get().strip(),
-            "output_location": self.output_location_var.get().strip()
         }
         
         try:
@@ -714,12 +765,12 @@ Part of the ArcSpatialDB system
     def handle_file_operations(self, project_uuid):
         """Handle copying/moving files to output location with renamed files"""
         try:
-            output_dir = self.output_location_var.get().strip()
+            output_dir = os.path.normpath(self.output_location_var.get().strip())
             project_name = self.project_name_var.get().strip()
             operation = self.file_operation_var.get()
             
             # Create project-specific folder inside output directory
-            project_folder = os.path.join(output_dir, project_name)
+            project_folder = os.path.normpath(os.path.join(output_dir, project_name))
             if not os.path.exists(project_folder):
                 os.makedirs(project_folder)
             
