@@ -489,18 +489,18 @@ def create_sample_data():
                 sample_areas = [
                     {
                         'project_id': 'sample001',
-                        'xmin': 732387.35,
-                        'ymin': 3595538.73,
-                        'xmax': 740294.94,
-                        'ymax': 3601127.26,
+                        'xmin': 732387,
+                        'ymin': 3595538,
+                        'xmax': 740294,
+                        'ymax': 3601127,
                         'scale': '1:1000'
                     },
                     {
                         'project_id': 'sample002',
-                        'xmin': 741000.00,
-                        'ymin': 3600000.00,
-                        'xmax': 742000.00,
-                        'ymax': 3602000.00,
+                        'xmin': 741000,
+                        'ymin': 3600000,
+                        'xmax': 742000,
+                        'ymax': 3602000,
                         'scale': '1:2000'
                     }
                 ]
