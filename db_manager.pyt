@@ -28,10 +28,10 @@ class Area(Base):
     __tablename__ = 'areas'
     id = Column(Integer, primary_key=True)
     project_id = Column(String, ForeignKey('projects.uuid'), nullable=False)
-    xmin = Column(Float, nullable=False)
-    ymin = Column(Float, nullable=False)
-    xmax = Column(Float, nullable=False)
-    ymax = Column(Float, nullable=False)
+    xmin = Column(Integer, nullable=False)
+    ymin = Column(Integer, nullable=False)
+    xmax = Column(Integer, nullable=False)
+    ymax = Column(Integer, nullable=False)
     scale = Column(String, nullable=False)
     project = relationship('Project', back_populates='areas')
 
