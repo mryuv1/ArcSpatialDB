@@ -398,10 +398,10 @@ def initialize_database():
             areas_table = Table('areas', metadata,
                 Column('id', Integer, primary_key=True, autoincrement=True),
                 Column('project_id', String, ForeignKey('projects.uuid'), nullable=False),
-                Column('xmin', Float, nullable=False),
-                Column('ymin', Float, nullable=False),
-                Column('xmax', Float, nullable=False),
-                Column('ymax', Float, nullable=False),
+                Column('xmin', Integer, nullable=False),
+                Column('ymin', Integer, nullable=False),
+                Column('xmax', Integer, nullable=False),
+                Column('ymax', Integer, nullable=False),
                 Column('scale', String, nullable=False)
             )
             
