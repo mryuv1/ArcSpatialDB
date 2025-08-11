@@ -532,7 +532,7 @@ Part of the ArcSpatialDB system
             # Extract coordinates
             xmin, ymin = bl_result[0]
             xmax, ymax = tr_result[0]
-            
+
             # Validate min/max relationships
             if xmin >= xmax:
                 messagebox.showerror("Error", "Bottom Left X must be less than Top Right X")

@@ -43,6 +43,249 @@ def file_exists_check(file_path):
         print(f"Error checking file existence for {file_path}: {e}")
         return False
 
+def parse_point(s):
+    """
+    Parse coordinate string with support for various separators and formats.
+    Supports: '/', ',', ':', ';', '|', ' ', '\t', '\\', and combinations
+    Also handles WGS84 format and other coordinate system prefixes
+    Handles complex formats like:
+    - WGS84 UTM 36N 735712 E / 3563829 N
+    - WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N
+    - WGS84 Geo 35.311654 E / 31.558439 N
+    - 35.311654 E / 31.558439 N (geographic)
+    - 719415 E / 3493811 N (UTM)
+    
+    Returns: (x_utm, y_utm) if successful, or (None, error_message) if failed
+    All coordinates are transformed to UTM format.
+    """
+    try:
+        s = str(s).strip()
+        
+        # Check for empty or whitespace-only input
+        if not s:
+            return None, "Empty coordinate string provided"
+        
+        # Handle complex WGS84 UTM format: "WGS84 UTM 36N 735712 E / 3563829 N"
+        if 'WGS84 UTM' in s.upper():
+            import re
+            # Pattern: WGS84 UTM [zone][N/S] [easting] [E/W] / [northing] [N/S]
+            utm_pattern = r'WGS84\s+UTM\s+(\d+[NS])\s+(\d+)\s*[EW]\s*/\s*(\d+)\s*[NS]'
+            match = re.search(utm_pattern, s, re.IGNORECASE)
+            if match:
+                try:
+                    zone = match.group(1)
+                    easting = float(match.group(2))
+                    northing = float(match.group(3))
+                    # Already in UTM format, return as-is
+                    return (int(round(easting)), int(round(northing))), None
+                except ValueError as e:
+                    return None, f"Invalid UTM coordinates in '{s}': {str(e)}"
+            else:
+                return None, f"Invalid WGS84 UTM format. Expected: 'WGS84 UTM [zone][N/S] [easting] [E/W] / [northing] [N/S]'"
+        
+        # Handle complex WGS84 Geographic format: "WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N"
+        # Also supports decimal degrees format: "WGS84 Geo 35.311654 E / 31.558439 N"
+        if 'WGS84 GEO' in s.upper():
+            import re
+            
+            # First try decimal degrees pattern: WGS84 Geo [decimal] [E/W] / [decimal] [N/S]
+            decimal_pattern = r'WGS84\s+GEO\s+([\d.]+)\s*([EW])\s*/\s*([\d.]+)\s*([NS])'
+            decimal_match = re.search(decimal_pattern, s, re.IGNORECASE)
+            if decimal_match:
+                try:
+                    lon_decimal = float(decimal_match.group(1))
+                    lon_direction = decimal_match.group(2).upper()
+                    lat_decimal = float(decimal_match.group(3))
+                    lat_direction = decimal_match.group(4).upper()
+                    
+                    # Apply direction (E/W for longitude, N/S for latitude)
+                    if lon_direction == 'W':
+                        lon_decimal = -lon_decimal
+                    if lat_direction == 'S':
+                        lat_decimal = -lat_decimal
+                    
+                    # Transform to UTM
+                    x_utm, y_utm, utm_epsg = transform_to_utm(lon_decimal, lat_decimal, "EPSG:4326")
+                    return (int(round(x_utm)), int(round(y_utm))), None
+                except ValueError as e:
+                    return None, f"Invalid decimal geographic coordinates in '{s}': {str(e)}"
+            
+            # Then try DMS pattern: WGS84 Geo [deg]° [min]' [sec]" [E/W] / [deg]° [min]' [sec]" [N/S]
+            geo_pattern = r'WGS84\s+GEO\s+(\d+)°\s*(\d+)\'\s*([\d.]+)"\s*[EW]\s*/\s*(\d+)°\s*(\d+)\'\s*([\d.]+)"\s*[NS]'
+            match = re.search(geo_pattern, s, re.IGNORECASE)
+            if match:
+                try:
+                    # Convert DMS to decimal degrees
+                    lon_deg, lon_min, lon_sec = float(match.group(1)), float(match.group(2)), float(match.group(3))
+                    lat_deg, lat_min, lat_sec = float(match.group(4)), float(match.group(5)), float(match.group(6))
+                    
+                    # Convert to decimal degrees using helper function
+                    lon_decimal = dms_to_decimal(lon_deg, lon_min, lon_sec, 'E' if 'E' in s.upper() else 'W')
+                    lat_decimal = dms_to_decimal(lat_deg, lat_min, lat_sec, 'N' if 'N' in s.upper() else 'S')
+                    
+                    # Transform to UTM
+                    x_utm, y_utm, utm_epsg = transform_to_utm(lon_decimal, lat_decimal, "EPSG:4326")
+                    return (int(round(x_utm)), int(round(y_utm))), None
+                except ValueError as e:
+                    return None, f"Invalid geographic coordinates in '{s}': {str(e)}"
+            else:
+                return None, f"Invalid WGS84 Geographic format. Expected: 'WGS84 Geo [deg]° [min]' [sec]\" [E/W] / [deg]° [min]' [sec]\" [N/S]' or 'WGS84 Geo [decimal] [E/W] / [decimal] [N/S]'"
+        
+        # Handle simple geographic format without WGS84 prefix: "35.311654 E / 31.558439 N"
+        import re
+        simple_geo_pattern = r'^([\d.]+)\s*([EW])\s*/\s*([\d.]+)\s*([NS])$'
+        simple_match = re.search(simple_geo_pattern, s, re.IGNORECASE)
+        if simple_match:
+            try:
+                lon_decimal = float(simple_match.group(1))
+                lon_direction = simple_match.group(2).upper()
+                lat_decimal = float(simple_match.group(3))
+                lat_direction = simple_match.group(4).upper()
+                
+                # Check if these are likely UTM coordinates (large numbers)
+                # UTM coordinates are typically in the range:
+                # Easting: 160,000 - 834,000 meters, Northing: 0 - 10,000,000 meters
+                if (160000 <= lon_decimal <= 834000 and 0 <= lat_decimal <= 10000000 and 
+                    lon_direction == 'E' and lat_direction == 'N'):
+                    # These are UTM coordinates, return as-is (already in UTM format)
+                    return (int(round(lon_decimal)), int(round(lat_decimal))), None
+                
+                # Otherwise treat as geographic coordinates
+                # Apply direction (E/W for longitude, N/S for latitude)
+                if lon_direction == 'W':
+                    lon_decimal = -lon_decimal
+                if lat_direction == 'S':
+                    lat_decimal = -lat_decimal
+                
+                # Transform to UTM (assume WGS84 geographic)
+                x_utm, y_utm, utm_epsg = transform_to_utm(lon_decimal, lat_decimal, "EPSG:4326")
+                return (int(round(x_utm)), int(round(y_utm))), None
+            except ValueError as e:
+                return None, f"Invalid simple geographic coordinates in '{s}': {str(e)}"
+        
+        # Handle simple WGS84 and other coordinate system prefixes
+        source_crs = None
+        if s.upper().startswith(('WGS', 'EPSG', 'UTM', 'GEO', 'PROJ')):
+            # Extract coordinates after the prefix
+            # Look for common patterns like "WGS84: 123.456, 789.012" or "UTM 36N: 123456, 789012"
+            import re
+            # Match coordinates after any prefix
+            coord_match = re.search(r'[:\s]+([-\d.,\s]+)$', s)
+            if coord_match:
+                # Determine source CRS from prefix
+                if s.upper().startswith('WGS84'):
+                    source_crs = "EPSG:4326"  # WGS84 Geographic
+                elif s.upper().startswith('EPSG:'):
+                    # Extract EPSG code
+                    epsg_match = re.search(r'EPSG:(\d+)', s, re.IGNORECASE)
+                    if epsg_match:
+                        source_crs = f"EPSG:{epsg_match.group(1)}"
+                elif s.upper().startswith('UTM'):
+                    # Extract UTM zone
+                    utm_match = re.search(r'UTM\s*(\d+[NS])', s, re.IGNORECASE)
+                    if utm_match:
+                        zone = utm_match.group(1)
+                        zone_num = int(zone[:-1])
+                        is_north = zone[-1].upper() == 'N'
+                        utm_epsg = 32600 + zone_num if is_north else 32700 + zone_num
+                        source_crs = f"EPSG:{utm_epsg}"
+                
+                s = coord_match.group(1).strip()
+            else:
+                return None, f"Invalid coordinate system format. Expected: '[SYSTEM]: [x], [y]' or '[SYSTEM] [x], [y]'"
+        
+        # Remove any parentheses, brackets, or quotes
+        s = s.strip('()[]{}"\'\'')
+        
+        # Try multiple separators in order of preference
+        separators = ['/', ',', ':', ';', '|', '\\', '\t']
+        
+        # First try exact separators
+        for sep in separators:
+            if sep in s:
+                parts = s.split(sep, 1)  # Split only on first occurrence
+                if len(parts) == 2:
+                    x_str, y_str = parts[0].strip(), parts[1].strip()
+                    # Try to convert to float
+                    try:
+                        x, y = float(x_str), float(y_str)
+                        
+                        # Check if coordinates are likely already in UTM format
+                        # UTM coordinates are typically in the range:
+                        # Easting: 160,000 - 834,000 meters
+                        # Northing: 0 - 10,000,000 meters (10M for southern hemisphere)
+                        if (160000 <= abs(x) <= 834000 and 0 <= abs(y) <= 10000000) and source_crs is None:
+                            # Likely already UTM coordinates, assume UTM Zone 36N (common for Middle East)
+                            return (int(round(x)), int(round(y))), None
+                        
+                        # Transform to UTM
+                        x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                        return (int(round(x_utm)), int(round(y_utm))), None
+                    except ValueError:
+                        continue
+        
+        # If no separator found, try splitting on whitespace
+        if ' ' in s:
+            parts = s.split()
+            if len(parts) >= 2:
+                try:
+                    x, y = float(parts[0]), float(parts[1])
+                    
+                    # Check if coordinates are likely already in UTM format
+                    if (160000 <= abs(x) <= 834000 and 0 <= abs(y) <= 10000000) and source_crs is None:
+                        # Likely already UTM coordinates
+                        return (int(round(x)), int(round(y))), None
+                    
+                    # Transform to UTM
+                    x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                    return (int(round(x_utm)), int(round(y_utm))), None
+                except ValueError:
+                    pass
+        
+        # Try regex pattern for coordinates with optional spaces and various separators
+        import re
+        # Pattern: number, optional spaces, separator, optional spaces, number
+        coord_pattern = r'([-+]?\d*\.?\d+)\s*[\/,:;|\t\\]\s*([-+]?\d*\.?\d+)'
+        match = re.search(coord_pattern, s)
+        if match:
+            try:
+                x, y = float(match.group(1)), float(match.group(2))
+                
+                # Check if coordinates are likely already in UTM format
+                if (160000 <= abs(x) <= 834000 and 0 <= abs(y) <= 10000000) and source_crs is None:
+                    # Likely already UTM coordinates
+                    return (int(round(x)), int(round(y))), None
+                
+                # Transform to UTM
+                x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                return (int(round(x_utm)), int(round(y_utm))), None
+            except ValueError:
+                pass
+        
+        # Try pattern for coordinates separated by whitespace
+        space_pattern = r'([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)'
+        match = re.search(space_pattern, s)
+        if match:
+            try:
+                x, y = float(match.group(1)), float(match.group(2))
+                
+                # Check if coordinates are likely already in UTM format
+                if (160000 <= abs(x) <= 834000 and 0 <= abs(y) <= 10000000) and source_crs is None:
+                    # Likely already UTM coordinates
+                    return (int(round(x)), int(round(y))), None
+                
+                # Transform to UTM
+                x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
+                return (int(round(x_utm)), int(round(y_utm))), None
+            except ValueError:
+                pass
+        
+        # If we get here, no valid format was found
+        return None, f"Invalid coordinate format: '{s}'. Expected formats: 'x,y', 'x/y', 'x:y', 'WGS84 UTM 36N 735712 E / 3563829 N', 'WGS84 Geo 35° 30' 0.11\" E / 32° 11' 9.88\" N', 'WGS84 Geo 35.311654 E / 31.558439 N', '35.311654 E / 31.558439 N', '719415 E / 3493811 N', etc."
+    except Exception as e:
+        return None, f"Error parsing coordinates '{s}': {str(e)}"
+    
+
 def transform_to_utm(x, y, source_crs=None):
     """
     Transform coordinates to WGS84 UTM Zone 36N (EPSG:32636) format using pyproj.
@@ -281,161 +524,6 @@ def create_sample_data():
 # Create sample data if database is empty
 create_sample_data()
 
-def parse_point(s):
-    """
-    Parse coordinate string with support for various separators and formats.
-    Supports: '/', ',', ':', ';', '|', ' ', '\t', '\\', and combinations
-    Also handles WGS84 format and other coordinate system prefixes
-    Handles complex formats like:
-    - WGS84 UTM 36N 735712 E / 3563829 N
-    - WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N
-    
-    Returns: (x_utm, y_utm) if successful, or (None, error_message) if failed
-    All coordinates are transformed to UTM format.
-    """
-    try:
-        s = str(s).strip()
-        
-        # Check for empty or whitespace-only input
-        if not s:
-            return None, "Empty coordinate string provided"
-        
-        # Handle complex WGS84 UTM format: "WGS84 UTM 36N 735712 E / 3563829 N"
-        if 'WGS84 UTM' in s.upper():
-            import re
-            # Pattern: WGS84 UTM [zone][N/S] [easting] [E/W] / [northing] [N/S]
-            utm_pattern = r'WGS84\s+UTM\s+(\d+[NS])\s+(\d+)\s*[EW]\s*/\s*(\d+)\s*[NS]'
-            match = re.search(utm_pattern, s, re.IGNORECASE)
-            if match:
-                try:
-                    zone = match.group(1)
-                    easting = float(match.group(2))
-                    northing = float(match.group(3))
-                    # Already in UTM format, return as-is
-                    return (easting, northing), None
-                except ValueError as e:
-                    return None, f"Invalid UTM coordinates in '{s}': {str(e)}"
-            else:
-                return None, f"Invalid WGS84 UTM format. Expected: 'WGS84 UTM [zone][N/S] [easting] [E/W] / [northing] [N/S]'"
-        
-        # Handle complex WGS84 Geographic format: "WGS84 Geo 35° 30' 0.11" E / 32° 11' 9.88" N"
-        if 'WGS84 GEO' in s.upper():
-            import re
-            # Pattern: WGS84 Geo [deg]° [min]' [sec]" [E/W] / [deg]° [min]' [sec]" [N/S]
-            geo_pattern = r'WGS84\s+GEO\s+(\d+)°\s*(\d+)\'\s*([\d.]+)"\s*[EW]\s*/\s*(\d+)°\s*(\d+)\'\s*([\d.]+)"\s*[NS]'
-            match = re.search(geo_pattern, s, re.IGNORECASE)
-            if match:
-                try:
-                    # Convert DMS to decimal degrees
-                    lon_deg, lon_min, lon_sec = float(match.group(1)), float(match.group(2)), float(match.group(3))
-                    lat_deg, lat_min, lat_sec = float(match.group(4)), float(match.group(5)), float(match.group(6))
-                    
-                    # Convert to decimal degrees using helper function
-                    lon_decimal = dms_to_decimal(lon_deg, lon_min, lon_sec, 'E' if 'E' in s.upper() else 'W')
-                    lat_decimal = dms_to_decimal(lat_deg, lat_min, lat_sec, 'N' if 'N' in s.upper() else 'S')
-                    
-                    # Transform to UTM
-                    x_utm, y_utm, utm_epsg = transform_to_utm(lon_decimal, lat_decimal, "EPSG:4326")
-                    return (x_utm, y_utm), None
-                except ValueError as e:
-                    return None, f"Invalid geographic coordinates in '{s}': {str(e)}"
-            else:
-                return None, f"Invalid WGS84 Geographic format. Expected: 'WGS84 Geo [deg]° [min]' [sec]\" [E/W] / [deg]° [min]' [sec]\" [N/S]'"
-        
-        # Handle simple WGS84 and other coordinate system prefixes
-        source_crs = None
-        if s.upper().startswith(('WGS', 'EPSG', 'UTM', 'GEO', 'PROJ')):
-            # Extract coordinates after the prefix
-            # Look for common patterns like "WGS84: 123.456, 789.012" or "UTM 36N: 123456, 789012"
-            import re
-            # Match coordinates after any prefix
-            coord_match = re.search(r'[:\s]+([-\d.,\s]+)$', s)
-            if coord_match:
-                # Determine source CRS from prefix
-                if s.upper().startswith('WGS84'):
-                    source_crs = "EPSG:4326"  # WGS84 Geographic
-                elif s.upper().startswith('EPSG:'):
-                    # Extract EPSG code
-                    epsg_match = re.search(r'EPSG:(\d+)', s, re.IGNORECASE)
-                    if epsg_match:
-                        source_crs = f"EPSG:{epsg_match.group(1)}"
-                elif s.upper().startswith('UTM'):
-                    # Extract UTM zone
-                    utm_match = re.search(r'UTM\s*(\d+[NS])', s, re.IGNORECASE)
-                    if utm_match:
-                        zone = utm_match.group(1)
-                        zone_num = int(zone[:-1])
-                        is_north = zone[-1].upper() == 'N'
-                        utm_epsg = 32600 + zone_num if is_north else 32700 + zone_num
-                        source_crs = f"EPSG:{utm_epsg}"
-                
-                s = coord_match.group(1).strip()
-            else:
-                return None, f"Invalid coordinate system format. Expected: '[SYSTEM]: [x], [y]' or '[SYSTEM] [x], [y]'"
-        
-        # Remove any parentheses, brackets, or quotes
-        s = s.strip('()[]{}"\'\'')
-        
-        # Try multiple separators in order of preference
-        separators = ['/', ',', ':', ';', '|', '\\', '\t']
-        
-        # First try exact separators
-        for sep in separators:
-            if sep in s:
-                parts = s.split(sep, 1)  # Split only on first occurrence
-                if len(parts) == 2:
-                    x_str, y_str = parts[0].strip(), parts[1].strip()
-                    # Try to convert to float
-                    try:
-                        x, y = float(x_str), float(y_str)
-                        # Transform to UTM
-                        x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
-                        return (x_utm, y_utm), None
-                    except ValueError:
-                        continue
-        
-        # If no separator found, try splitting on whitespace
-        if ' ' in s:
-            parts = s.split()
-            if len(parts) >= 2:
-                try:
-                    x, y = float(parts[0]), float(parts[1])
-                    # Transform to UTM
-                    x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
-                    return (x_utm, y_utm), None
-                except ValueError:
-                    pass
-        
-        # Try regex pattern for coordinates with optional spaces and various separators
-        import re
-        # Pattern: number, optional spaces, separator, optional spaces, number
-        coord_pattern = r'([-+]?\d*\.?\d+)\s*[\/,:;|\t\\]\s*([-+]?\d*\.?\d+)'
-        match = re.search(coord_pattern, s)
-        if match:
-            try:
-                x, y = float(match.group(1)), float(match.group(2))
-                # Transform to UTM
-                x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
-                return (x_utm, y_utm), None
-            except ValueError:
-                pass
-        
-        # Try pattern for coordinates separated by whitespace
-        space_pattern = r'([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)'
-        match = re.search(space_pattern, s)
-        if match:
-            try:
-                x, y = float(match.group(1)), float(match.group(2))
-                # Transform to UTM
-                x_utm, y_utm, utm_epsg = transform_to_utm(x, y, source_crs)
-                return (x_utm, y_utm), None
-            except ValueError:
-                pass
-        
-        # If we get here, no valid format was found
-        return None, f"Invalid coordinate format: '{s}'. Expected formats: 'x,y', 'x/y', 'x:y', 'WGS84 UTM 36N 735712 E / 3563829 N', 'WGS84 Geo 35° 30' 0.11\" E / 32° 11' 9.88\" N', etc."
-    except Exception as e:
-        return None, f"Error parsing coordinates '{s}': {str(e)}"
 
 def calculate_area_size(xmin, ymin, xmax, ymax):
     """Calculate the area size in square meters using UTM coordinates"""
